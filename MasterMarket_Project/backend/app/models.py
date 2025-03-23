@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime
-from sqlalchemy.sql import func
+# app/models.py
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from .database import Base
+from datetime import datetime
 
 class Product(Base):
     __tablename__ = "products"
@@ -9,6 +11,7 @@ class Product(Base):
     description = Column(String)
     quantity = Column(Integer)
     image_url = Column(String)
+    # Define relationships if needed
 
 class Price(Base):
     __tablename__ = "prices"
@@ -16,27 +19,25 @@ class Price(Base):
     product_id = Column(Integer, ForeignKey("products.id"))
     supermarket = Column(String)
     price = Column(Float)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, default=datetime.utcnow)
+    product = relationship("Product", backref="prices")
 
-class PriceHistory(Base):  # Historical prices
+class PriceHistory(Base):
     __tablename__ = "price_history"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"))
     supermarket = Column(String)
     price = Column(Float)
-    recorded_at = Column(DateTime(timezone=True), server_default=func.now())
-
-class User(Base):
-    __tablename__ = "users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True)
-    password_hash = Column(String)
-    subscription_type = Column(String, default="free")
+    recorded_at = Column(DateTime, default=datetime.utcnow)
+    product = relationship("Product", backref="price_history")
 
 class Basket(Base):
     __tablename__ = "basket"
+
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer)
     product_id = Column(Integer, ForeignKey("products.id"))
     quantity = Column(Integer)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product")
