@@ -1,0 +1,1 @@
+robocopy "C:\Users\pbmch\OneDrive\Documentos\apps\price_tracker\MasterMarket_Project\mobile" "C:\Users\pbmch\OneDrive\Documentos\apps\price_tracker\MasterMarket_Project_fuentes\mobile" /E /XD node_modules .git .expo dist
