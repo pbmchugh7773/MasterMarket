@@ -12,6 +12,7 @@ from app.routes import basket
 from app.routes import prices
 from app.routes import price_history
 from app.routes import users
+from app.routes import routes_user
 from app.routes import prices as price_routes
 
 
@@ -39,6 +40,7 @@ app.include_router(prices.router)
 app.include_router(price_history.router)
 app.include_router(users.router)
 app.include_router(price_routes.router)
+app.include_router(routes_user.router)
 
 
 

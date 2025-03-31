@@ -3,15 +3,11 @@ from sqlalchemy.orm import Session
 from app.models import PriceHistory
 from app.schemas import PriceHistory as PriceHistorySchema
 from app.database import SessionLocal
+from app.database import get_db
 
 router = APIRouter(prefix="/price-history", tags=["price-history"])
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @router.get("/", response_model=list[PriceHistorySchema])
 def read_price_history(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

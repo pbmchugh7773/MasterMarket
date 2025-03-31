@@ -3,15 +3,11 @@ from sqlalchemy.orm import Session
 from app import crud
 from app.schemas import Basket, BasketCreate, BasketUpdate
 from app.database import SessionLocal
+from app.database import get_db
 
 router = APIRouter(prefix="/basket", tags=["basket"])
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 @router.get("/", response_model=list[Basket])
 def read_baskets(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

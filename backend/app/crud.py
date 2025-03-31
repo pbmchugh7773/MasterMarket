@@ -7,6 +7,7 @@ from app.schemas import UserCreate
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from app.models import Price
+from . import models, schemas
 
 # ---------- PRICE ----------
 
@@ -114,13 +115,59 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ---------- USER ----------
 
-def get_user_by_email(db: Session, email: str):
-    return db.query(User).filter(User.email == email).first()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def create_user(db: Session, user: UserCreate):
-    hashed_password = pwd_context.hash(user.password)
-    db_user = User(username=user.username, email=user.email, hashed_password=hashed_password)
+# ----------- Hasheo de contraseña -----------
+
+def get_password_hash(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
+# ----------- Crear usuario -----------
+
+def create_user(db: Session, user: schemas.UserCreate) -> models.User:
+    db_user = models.User(
+        email=user.email,
+        hashed_password=get_password_hash(user.password),
+        full_name=user.full_name,
+        is_premium=user.is_premium
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+# ----------- Autenticar usuario -----------
+
+def authenticate_user(db: Session, email: str, password: str):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
+
+# ----------- Consultar usuario -----------
+
+def get_user_by_email(db: Session, email: str) -> models.User:
+    return db.query(models.User).filter(models.User.email == email).first()
+
+def get_user_by_id(db: Session, user_id: int) -> models.User:
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+# ----------- Actualizar usuario -----------
+
+def update_user(db: Session, user_id: int, update_data: dict) -> models.User:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+
+    for key, value in update_data.items():
+        setattr(user, key, value)
+
+    db.commit()
+    db.refresh(user)
+    return user
+

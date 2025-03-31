@@ -7,16 +7,12 @@ from sqlalchemy.orm import Session
 from app import crud
 from app.schemas import Product, ProductCreate, ProductUpdate
 from app.database import SessionLocal
+from app.database import get_db
 print("✅ Se cargó el router de productos")
 
 router = APIRouter(prefix="/products", tags=["products"])
 
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 #@router.get("/")
 #def get_products(db: Session = Depends(get_db)):

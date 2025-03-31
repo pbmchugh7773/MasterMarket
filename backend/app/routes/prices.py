@@ -3,17 +3,13 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.schemas import Price, PriceCreate, PriceUpdate
 import app.crud as price_crud
+from app.database import get_db
 
 
 router = APIRouter(prefix="/prices", tags=["prices"])
 
 # Dependencia para obtener la sesión de base de datos
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+
 
 # GET /prices/ → listar precios
 @router.get("/", response_model=list[Price])

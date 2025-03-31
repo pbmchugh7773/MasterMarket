@@ -1,5 +1,7 @@
 # app/schemas.py
-from pydantic import BaseModel
+
+from pydantic import BaseModel, EmailStr
+from typing import Optional
 from datetime import datetime
 
 # ---------- Price ----------
@@ -126,19 +128,40 @@ class Basket(BasketBase):
     class Config:
         from_attributes = True
 
-# SCHEMAS DE USUARIO
+from pydantic import BaseModel, EmailStr
+from typing import Optional
+from datetime import datetime
 
+# ----------- Entrada: Registro -----------
 
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+    is_premium: Optional[bool] = False
 
-class UserBase(BaseModel):
-    username: str
-    email: str
+# ----------- Entrada: Login -----------
 
-class UserCreate(UserBase):
+class UserLogin(BaseModel):
+    email: EmailStr
     password: str
 
-class User(UserBase):
+# ----------- Salida: Perfil del usuario -----------
+
+class UserOut(BaseModel):
     id: int
+    email: EmailStr
+    full_name: Optional[str] = None
+    is_active: bool
+    is_premium: bool
+    created_at: datetime
 
     class Config:
-        from_attributes = True
+        orm_mode = True
+
+# ----------- Entrada: Actualizar perfil -----------
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    is_premium: Optional[bool] = None
+    is_active: Optional[bool] = None
