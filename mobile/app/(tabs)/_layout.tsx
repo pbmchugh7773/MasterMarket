@@ -36,11 +36,40 @@ export default function Layout() {
 
   return (
     <BasketProvider>
-      <Tabs
-        screenOptions={{
-          tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-          headerShown: showHeader,
-        }}>
+        <Tabs
+          screenOptions={{
+            tabBarActiveTintColor: '#fff',
+            tabBarInactiveTintColor: '#888',
+            tabBarStyle: {
+              backgroundColor: '#000',
+              borderTopWidth: 0,
+              height: 65,
+              paddingBottom: 10,
+              paddingTop: 6,
+            },
+            tabBarLabelStyle: {
+              fontSize: 13,
+              fontWeight: '600',
+            },
+            tabBarIconStyle: {
+              marginBottom: -3,
+            },
+            headerShown: showHeader,
+            headerStyle: {
+              backgroundColor: '#000',
+              borderBottomWidth: 0,
+              elevation: 0,
+              shadowOpacity: 0,
+            },
+            headerTitleStyle: {
+              fontWeight: '700',
+              fontSize: 18,
+              color: '#fff', // título blanco
+            },
+            headerTintColor: '#fff', // íconos y flechas blancas
+          }}
+        >
+
         <Tabs.Screen
           name="index"
           options={{
@@ -51,7 +80,7 @@ export default function Layout() {
         <Tabs.Screen
           name="basket"
           options={{
-            title: 'Basket',
+            title: '🛒 Your Basket',
             tabBarIcon: ({ color }) => <TabBarIcon name="shopping-basket" color={color} />,
           }}
         />

@@ -77,26 +77,40 @@ const BasketScreen = () => {
             <View style={styles.totalsCard}>
               <Text style={styles.totalsTitle}>Total by Supermarket</Text>
 
-              {['Tesco', 'Aldi', 'Lidl'].map((label) => (
-                <View key={label} style={styles.chartRow}>
-                  <Text style={styles.chartLabel}>{label}</Text>
-                  <View style={styles.chartLine}>
-                    <View
-                      style={[
-                        styles.bar,
-                        {
-                          width: getBarWidth(basketTotals[label.toLowerCase() as 'tesco' | 'aldi' | 'lidl'], maxTotal),
-                          backgroundColor:
-                            label === 'Tesco' ? '#2ecc71' : label === 'Aldi' ? '#f1c40f' : '#e74c3c',
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.chartValue}>
-                    €{basketTotals[label.toLowerCase() as 'tesco' | 'aldi' | 'lidl'].toFixed(2)}
-                  </Text>
-                </View>
-              ))}
+              {(() => {
+                  const totalsArray = [
+                    { name: 'Tesco', value: basketTotals.tesco },
+                    { name: 'Aldi', value: basketTotals.aldi },
+                    { name: 'Lidl', value: basketTotals.lidl },
+                  ];
+
+                  const sorted = [...totalsArray].sort((a, b) => a.value - b.value);
+
+                  const colorMap: Record<string, string> = {
+                    [sorted[0].name]: '#2ecc71', // verde
+                    [sorted[1].name]: '#f1c40f', // amarillo
+                    [sorted[2].name]: '#e74c3c', // rojo
+                  };
+
+                  return totalsArray.map(({ name, value }) => (
+                    <View key={name} style={styles.chartRow}>
+                      <Text style={styles.chartLabel}>{name}</Text>
+                      <View style={styles.chartLine}>
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              width: getBarWidth(value, maxTotal),
+                              backgroundColor: colorMap[name],
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.chartValue}>€{value.toFixed(2)}</Text>
+                    </View>
+                  ));
+                })()}
+
 
               <TouchableOpacity onPress={confirmClearBasket} style={styles.clearButton}>
                 <Text style={styles.clearButtonText}>Delete Basket</Text>

@@ -35,14 +35,13 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id_str: str = payload.get("sub")
-        if user_id_str is None:
+        sub: str = payload.get("sub")
+        if sub is None:
             raise credentials_exception
-        user_id = int(user_id_str)
     except (JWTError, ValueError):
         raise credentials_exception
 
-    user = crud.get_user_by_id(db, user_id=user_id)
+    user = crud.get_user_by_email(db, email=sub)
     if user is None:
         raise credentials_exception
     return user
