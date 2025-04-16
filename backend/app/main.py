@@ -14,10 +14,18 @@ from app.routes import price_history
 from app.routes import users
 from app.routes import routes_user
 from app.routes import prices as price_routes
-
+from app.models import Base
+from app.database import engine
+from fastapi.staticfiles import StaticFiles
+import os
 
 app = FastAPI()
+os.makedirs("static/images", exist_ok=True)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+
+#Base.metadata.drop_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
 # Dependency to get DB session for each request
 def get_db():
     db = SessionLocal()
@@ -45,10 +53,8 @@ app.include_router(routes_user.router)
 
 
 
-from app.models import Base
-from app.database import engine
 
-Base.metadata.create_all(bind=engine)
+
 
 
 

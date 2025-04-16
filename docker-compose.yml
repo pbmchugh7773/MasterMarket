@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://mastermarket:securepassword@db:5432/mastermarket_db
     volumes:
       - ./backend/app:/app/app
+      - ./backend/app/static:/app/app/static
 
 volumes:
   mastermarket_pgdata:

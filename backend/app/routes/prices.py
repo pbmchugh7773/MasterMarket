@@ -31,3 +31,7 @@ def read_prices_by_product(product_id: int, db: Session = Depends(get_db)):
     if not prices:
         raise HTTPException(status_code=404, detail="No prices found for this product")
     return prices
+
+@router.post("/prices/", response_model=Price)
+def add_price(price: PriceCreate, db: Session = Depends(get_db)):
+    return price_crud.create_price(db, price)

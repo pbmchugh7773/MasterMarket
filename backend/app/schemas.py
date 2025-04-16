@@ -44,8 +44,10 @@ class ProductBase(BaseModel):
     name: str
     description: str
     category: str
+    brand: Optional[str] = None
     quantity: int
     image_url: str
+    barcode: str 
 
 class ProductCreate(ProductBase):
     pass

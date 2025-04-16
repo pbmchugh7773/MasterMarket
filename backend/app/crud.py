@@ -12,11 +12,39 @@ from . import models, schemas
 # ---------- PRICE ----------
 
 def create_price(db: Session, price: PriceCreate):
-    db_price = Price(**price.dict())
-    db.add(db_price)
-    db.commit()
-    db.refresh(db_price)
-    return db_price
+    existing = db.query(Price).filter_by(
+        product_id=price.product_id,
+        supermarket=price.supermarket
+    ).first()
+
+    if existing:
+        # Guardar el precio anterior en PriceHistory
+        history = PriceHistory(
+            product_id=existing.product_id,
+            supermarket=existing.supermarket,
+            price=existing.price,
+            recorded_at=existing.updated_at  # o datetime.utcnow() si preferís
+        )
+        db.add(history)
+
+        # Actualizar el precio actual
+        existing.price = price.price
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        # Crear nuevo precio si no existía
+        new_price = Price(
+            product_id=price.product_id,
+            supermarket=price.supermarket,
+            price=price.price,
+            updated_at=datetime.utcnow()
+        )
+        db.add(new_price)
+        db.commit()
+        db.refresh(new_price)
+        return new_price
 
 def update_price(db: Session, price_id: int, new_price: float):
     db_price = db.query(Price).filter(Price.id == price_id).first()
@@ -31,6 +59,9 @@ def update_price(db: Session, price_id: int, new_price: float):
 def get_prices_by_product_id(db: Session, product_id: int):
     return db.query(Price).filter(Price.product_id == product_id).all()
 
+def get_prices(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(Price).offset(skip).limit(limit).all()
+    
 
 # ---------- PRICE HISTORY ----------
 

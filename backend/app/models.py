@@ -23,14 +23,16 @@ class Product(Base):
     name = Column(String, index=True)
     description = Column(String)
     category = Column(String)
+    brand = Column(String, nullable=True)
     quantity = Column(Integer)
     image_url = Column(String)
+    barcode = Column(String, index=True) 
     # Define relationships if needed
 
 class Price(Base):
     __tablename__ = "prices"
     id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"))
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
     supermarket = Column(String)
     price = Column(Float)
     updated_at = Column(DateTime, default=datetime.utcnow)
