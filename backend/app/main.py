@@ -25,7 +25,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 #Base.metadata.drop_all(bind=engine)
-#Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 # Dependency to get DB session for each request
 def get_db():
     db = SessionLocal()
