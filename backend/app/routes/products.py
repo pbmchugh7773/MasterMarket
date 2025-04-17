@@ -7,7 +7,7 @@ import shutil
 from uuid import uuid4
 
 from app import crud
-from app.models import Product as ProductModel
+from app.models import Product as ProductModel, Price
 from app.schemas import Product as ProductSchema, ProductCreate, ProductUpdate
 from app.database import get_db
 

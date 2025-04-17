@@ -14,6 +14,7 @@ from app.routes import price_history
 from app.routes import users
 from app.routes import routes_user
 from app.routes import prices as price_routes
+from app.routes import products_with_prices
 from app.models import Base
 from app.database import engine
 from fastapi.staticfiles import StaticFiles
@@ -42,6 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(products_with_prices.router)
 app.include_router(products.router)
 app.include_router(basket.router)
 app.include_router(prices.router)
@@ -49,6 +51,7 @@ app.include_router(price_history.router)
 app.include_router(users.router)
 app.include_router(price_routes.router)
 app.include_router(routes_user.router)
+
 
 
 
