@@ -24,6 +24,7 @@ type Product = {
 };
 
 const categories = [
+  { name: 'All', icon: require('../../assets/icons/all.png') },
   { name: 'Fresh Food', icon: require('../../assets/icons/fresh_food.png') },
   { name: 'Bakery', icon: require('../../assets/icons/bakery.png') },
   { name: 'Treats & Snacks', icon: require('../../assets/icons/snacks.png') },
@@ -38,12 +39,18 @@ const categories = [
   { name: 'Inspiration & Events', icon: require('../../assets/icons/events.png') },
 ];
 
+const getImageUrl = (imagePath: string) => {
+  return `https://mastermarket-production.up.railway.app${imagePath}`;
+};
+
+
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const { addToBasket: addToGlobalBasket } = useBasket();
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+
   
   // Obtener productos al inicio
   useEffect(() => {
@@ -60,44 +67,32 @@ export default function HomeScreen() {
   const updateFilteredProducts = () => {
     console.log("Filtering products. Search:", searchText, "Category:", selectedCategory);
     console.log("Total products:", products.length);
-    
-    // Si no hay productos cargados, no hay nada que filtrar
+  
     if (products.length === 0) {
       setFilteredProducts([]);
       return;
     }
-    
-    // Caso 1: No hay categoría seleccionada y no hay texto de búsqueda
-    if (!selectedCategory && searchText.trim() === '') {
-      console.log("Case 1: No category and no search text");
-      setFilteredProducts([]);
-      return;
-    }
-
-    // Aplicamos filtros según la lógica requerida
+  
     let filtered = [...products];
-
-    // Filtrar por categoría si hay una seleccionada
-    if (selectedCategory) {
-      console.log("Filtering by category:", selectedCategory);
+  
+    // ✅ Mostrar todo si está seleccionada "All"
+    if (selectedCategory && selectedCategory !== "All") {
       filtered = filtered.filter(
         (product) => 
           (product.category || '').trim().toLowerCase() === selectedCategory.trim().toLowerCase()
       );
-      console.log("After category filter:", filtered.length);
     }
-
+  
     // Filtrar por texto de búsqueda si hay texto
     if (searchText.trim() !== '') {
-      console.log("Filtering by search text:", searchText);
       filtered = filtered.filter((product) =>
         product.name.toLowerCase().includes(searchText.toLowerCase())
       );
-      console.log("After search filter:", filtered.length);
     }
-
+  
     setFilteredProducts(filtered);
   };
+  
 
   // Actualizamos el filtrado cada vez que cambian las dependencias
   useEffect(() => {
@@ -113,7 +108,7 @@ export default function HomeScreen() {
     console.log("Category selected:", category);
     // Si la categoría ya está seleccionada, la deseleccionamos
     if (selectedCategory === category) {
-      setSelectedCategory(null);
+      setSelectedCategory("All");
     } else {
       setSelectedCategory(category);
     }
@@ -126,6 +121,7 @@ export default function HomeScreen() {
       const basketItem = {
         id: product.id,
         name: product.name,
+        image_url: product.image_url,
         quantity: 1,
         prices: prices.map((p: any) => ({
           supermarket: p.supermarket,
@@ -182,7 +178,7 @@ export default function HomeScreen() {
         {selectedCategory && (
           <Text style={styles.categoryIndicator}>
             Category: {selectedCategory} 
-            <Text style={styles.clearCategoryText} onPress={() => setSelectedCategory(null)}>
+            <Text style={styles.clearCategoryText} onPress={() => setSelectedCategory("All")}>
               {" "}(Clear)
             </Text>
           </Text>
@@ -199,10 +195,10 @@ export default function HomeScreen() {
         {filteredProducts.map((product) => (
           <TouchableOpacity key={product.id} onPress={() => addToBasket(product)}>
             <View style={styles.productCard}>
-              <Image source={{ uri: product.image_url }} style={styles.productImage} />
+              <Image source={{ uri: getImageUrl(product.image_url) }} style={styles.productImage} />
               <View style={{ marginLeft: 10, flex: 1 }}>
                 <Text style={styles.productName}>{product.name}</Text>
-                <Text style={styles.productDescription}>{product.description}</Text>
+                <Text numberOfLines={3} ellipsizeMode="tail" style={styles.productDescription}>{product.description}</Text>
                 <Text style={styles.productCategory}>Category: {product.category}</Text>
               </View>
             </View>
