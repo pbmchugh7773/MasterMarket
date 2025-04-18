@@ -31,26 +31,38 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ) -> Dict[str, str]:
+    print(f"🔐 Intentando login con email: {form_data.username}")
+
     user = crud.authenticate_user(db, form_data.username, form_data.password)
+
     if not user:
+        print("❌ Usuario no encontrado o contraseña incorrecta")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    print(f"✅ Usuario autenticado: {user.email}")
+    print(f"   ➤ Rol: {getattr(user, 'role', 'N/A')}")
+    print(f"   ➤ Premium: {user.is_premium}")
+
     access_token = auth.create_access_token(data={"sub": user.id})
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        #"user": {
-        #    "id": user.id,
-        #    "email": user.email,
-        #    "role": user.role,
-        #    "is_premium": user.is_premium
-        #}
-    }
+    try:
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                # "role": user.role,  # Descomentar si querés testear
+                "is_premium": user.is_premium
+            }
+        }
+    except Exception as e:
+        print("🔥 Error al generar la respuesta:", e)
+        raise HTTPException(status_code=500, detail="Error inesperado")
 
 
 # ----------- OBTENER DATOS DEL USUARIO AUTENTICADO -----------
