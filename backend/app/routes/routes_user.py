@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 from .. import schemas, crud, auth, models
 from ..database import get_db
-from typing import Dict
+from typing import Dict, Any
 from ..schemas import UserUpdate
-
+ 
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"]
@@ -30,7 +30,7 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 @router.post("/login")
 def login_user(
     form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     print(f"🔐 Intentando login con email: {form_data.username}")
 
     user = crud.authenticate_user(db, form_data.username, form_data.password)
@@ -56,7 +56,7 @@ def login_user(
             "user": {
                 "id": user.id,
                 "email": user.email,
-                # "role": user.role,  # Descomentar si querés testear
+                "role": user.role,  # Descomentar si querés testear
                 "is_premium": user.is_premium
             }
         }
