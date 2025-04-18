@@ -6,7 +6,9 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { BasketProvider } from '../../context/BasketContext';
 import { router } from 'expo-router';
-import { isLoggedIn } from '../../lib/auth'; // usa ../lib/auth si no usás alias '@/'
+import { isLoggedIn } from '../../lib/auth';
+import { useAuth } from '@/context/AuthContext';
+
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -17,8 +19,9 @@ function TabBarIcon(props: {
 
 export default function Layout() {
   const [checked, setChecked] = useState(false);
-  const colorScheme = useColorScheme(); // ✅ Hook antes de cualquier return
-  const showHeader = useClientOnlyValue(false, true); // ✅ Hook también arriba
+  const colorScheme = useColorScheme();
+  const showHeader = useClientOnlyValue(false, true);
+  const { user } = useAuth(); // 👈 Obtenemos el usuario actual
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -32,7 +35,7 @@ export default function Layout() {
     checkAuth();
   }, []);
 
-  if (!checked) return null;
+  if (!checked || !user) return null;
 
   return (
     <BasketProvider>
@@ -40,7 +43,8 @@ export default function Layout() {
         screenOptions={{
           tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
           headerShown: showHeader,
-        }}>
+        }}
+      >
         <Tabs.Screen
           name="index"
           options={{
@@ -56,19 +60,22 @@ export default function Layout() {
           }}
         />
         <Tabs.Screen
-          name="two"
-          options={{
-            title: 'Profile',
-            tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="me"
           options={{
             title: 'Perfil',
             tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
           }}
         />
+
+        {user?.role === 'admin' && (
+          <Tabs.Screen
+            name="admin"
+            options={{
+              title: 'Admin',
+              tabBarIcon: ({ color }) => <TabBarIcon name="cog" color={color} />,
+            }}
+          />
+        )}
       </Tabs>
     </BasketProvider>
   );

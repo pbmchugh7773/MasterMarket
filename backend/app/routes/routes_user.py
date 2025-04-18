@@ -39,9 +39,18 @@ def login_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-
     access_token = auth.create_access_token(data={"sub": user.id})
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "is_premium": user.is_premium
+        }
+    }
 
 
 # ----------- OBTENER DATOS DEL USUARIO AUTENTICADO -----------
