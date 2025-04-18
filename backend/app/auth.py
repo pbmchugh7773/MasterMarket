@@ -3,10 +3,12 @@
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, status
+from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from .database import get_db
 from . import crud, models
+
 
 # Clave secreta para firmar los tokens (guardala en .env en producción)
 SECRET_KEY = "supersecretkey123"
@@ -46,3 +48,17 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+# ----------- Verificar rol -----------
+
+
+
+def require_role(required_role: str):
+    def checker(user: models.User = Depends(get_current_user)):
+        if user.role != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: You need role '{required_role}'"
+            )
+        return user
+    return checker
