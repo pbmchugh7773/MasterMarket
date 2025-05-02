@@ -39,3 +39,6 @@ yarn.lock
 
 # Docker volumes
 **/data/
+
+# Documents
+Documents/

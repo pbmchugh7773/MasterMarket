@@ -77,7 +77,7 @@ async def upload_image(file: UploadFile = File(...)):
     return {"image_url": image_url}
 
 
-@router.post("/with-image", summary="Crear producto con imagen")
+@router.post("/with-image", summary="Crear producto con imagen o URL")
 async def create_product_with_image(
     name: str = Form(...),
     barcode: str = Form(...),
@@ -85,19 +85,29 @@ async def create_product_with_image(
     brand: str = Form(...),
     description: str = Form(...),
     quantity: int = Form(...),
-    image: UploadFile = File(...),
+    image: UploadFile = File(None),  # 👈 ahora es opcional
+    image_url: str = Form(None),     # 👈 nuevo campo opcional
     db: Session = Depends(get_db)
 ):
     existing_product = db.query(ProductModel).filter(ProductModel.barcode == barcode).first()
     if existing_product:
         raise HTTPException(status_code=400, detail="Product with this barcode already exists.")
 
-    # Guardar imagen
-    filename = f"{uuid4().hex}_{image.filename}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(image.file, buffer)
-    image_url = f"/static/images/{filename}"
+    final_image_url = None
+
+    if image:
+        # Guardar imagen subida
+        filename = f"{uuid4().hex}_{image.filename}"
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        final_image_url = f"/static/images/{filename}"
+    elif image_url:
+        # Usar la URL externa directamente
+        final_image_url = image_url
+    else:
+        # Ninguna imagen proporcionada
+        final_image_url = None
 
     # Crear producto
     new_product = ProductModel(
@@ -107,7 +117,7 @@ async def create_product_with_image(
         brand=brand,
         description=description,
         quantity=quantity,
-        image_url=image_url
+        image_url=final_image_url
     )
 
     db.add(new_product)
