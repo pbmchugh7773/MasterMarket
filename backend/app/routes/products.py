@@ -1,15 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
-
 from fastapi.responses import JSONResponse
-import os
 import shutil
 from uuid import uuid4
-
+import boto3
+from botocore.exceptions import BotoCoreError, NoCredentialsError
+import os
 from app import crud
 from app.models import Product as ProductModel, Price
 from app.schemas import Product as ProductSchema, ProductCreate, ProductUpdate
 from app.database import get_db
+from PIL import Image
+import io
 
 print("✅ Se cargó el router de productos")
 
@@ -20,7 +22,42 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "static", "images"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Obtener todos los productos
+#  AWS S3 config
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_S3_BUCKET_NAME = os.getenv("AWS_S3_BUCKET")
+AWS_REGION = os.getenv("AWS_REGION", "eu-west-1")
+
+s3 = boto3.client("s3",
+                  region_name=AWS_REGION,
+                  aws_access_key_id=AWS_ACCESS_KEY_ID,
+                  aws_secret_access_key=AWS_SECRET_ACCESS_KEY)
+
+def upload_to_s3(file: UploadFile, filename: str) -> str:
+    try:
+        # 🧼 Open the uploaded image
+        image = Image.open(file.file)
+
+        # 🎯 Resize or compress as needed (e.g., convert to JPEG and lower quality)
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG", optimize=True, quality=70)  # quality: 1-95
+        buffer.seek(0)
+
+        # 🔼 Upload to S3 from buffer
+        s3.upload_fileobj(
+            buffer,
+            AWS_S3_BUCKET_NAME,
+            filename,
+            ExtraArgs={"ContentType": "image/jpeg"}
+        )
+
+        url = f"https://{AWS_S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{filename}"
+        return url
+    except Exception as e:
+        print(f"❌ Error uploading to S3: {e}")
+        raise HTTPException(status_code=500, detail=f"S3 upload failed: {str(e)}")
+
+# Get all products
 @router.get("/", response_model=list[ProductSchema])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_products(db, skip=skip, limit=limit)
@@ -77,7 +114,8 @@ async def upload_image(file: UploadFile = File(...)):
     return {"image_url": image_url}
 
 
-@router.post("/with-image", summary="Crear producto con imagen o URL")
+# ✅ Upload image to S3 and create product
+@router.post("/with-image", summary="Create product with image or external image URL")
 async def create_product_with_image(
     name: str = Form(...),
     barcode: str = Form(...),
@@ -85,10 +123,11 @@ async def create_product_with_image(
     brand: str = Form(...),
     description: str = Form(...),
     quantity: int = Form(...),
-    image: UploadFile = File(None),  # 👈 ahora es opcional
-    image_url: str = Form(None),     # 👈 nuevo campo opcional
+    image: UploadFile = File(None),
+    image_url: str = Form(None),
     db: Session = Depends(get_db)
 ):
+    print("📸 Uploading image using S3")
     existing_product = db.query(ProductModel).filter(ProductModel.barcode == barcode).first()
     if existing_product:
         raise HTTPException(status_code=400, detail="Product with this barcode already exists.")
@@ -96,20 +135,11 @@ async def create_product_with_image(
     final_image_url = None
 
     if image:
-        # Guardar imagen subida
         filename = f"{uuid4().hex}_{image.filename}"
-        file_path = os.path.join(UPLOAD_DIR, filename)
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(image.file, buffer)
-        final_image_url = f"/static/images/{filename}"
+        final_image_url = upload_to_s3(image, filename)
     elif image_url:
-        # Usar la URL externa directamente
         final_image_url = image_url
-    else:
-        # Ninguna imagen proporcionada
-        final_image_url = None
 
-    # Crear producto
     new_product = ProductModel(
         name=name,
         barcode=barcode,
