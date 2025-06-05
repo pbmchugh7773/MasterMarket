@@ -12,6 +12,7 @@ import {
 import { fetchProducts } from '../../services/api';
 
 import { fetchPricesByProduct } from '../../services/api';
+import { fetchPricesByProductGeneric } from '../../services/api';
 import { useBasket } from '../../context/BasketContext';
 
 type Product = {
@@ -40,7 +41,7 @@ const categories = [
 ];
 
 const getImageUrl = (imagePath: string) => {
-  return `https://mastermarket-production.up.railway.app${imagePath}`;
+  return `http://192.168.1.25:8000/${imagePath}`;
 };
 
 
@@ -114,29 +115,32 @@ export default function HomeScreen() {
     }
   };
 
-  const addToBasket = async (product: Product) => {
-    try {
-      const prices = await fetchPricesByProduct(product.id);
-  
-      const basketItem = {
-        id: product.id,
-        name: product.name,
-        image_url: product.image_url,
-        quantity: 1,
-        prices: prices.map((p: any) => ({
-          supermarket: p.supermarket,
-          price: p.price,
-          updated_at: p.updated_at,
-        })),
-      };
-  
-      addToGlobalBasket(basketItem); // usamos el del contexto
-      Alert.alert('Added to basket', `${product.name} has been added.`);
-    } catch (error) {
-      console.error('Error fetching prices:', error);
-      Alert.alert('Error', 'Could not fetch prices for this product.');
-    }
-  };
+const addToBasket = async (product: Product) => {
+  try {
+    const summary = await fetchPricesByProductGeneric(product.id);
+
+    const basketItem = {
+      id: summary.id,
+      name: summary.name,
+      image_url: summary.image_url,
+      quantity: 1,
+      // Ajuste aquí:
+      prices: summary.products.map((p: any) => ({
+        supermarket: p.supermarket,
+        price: p.last_price,
+        updated_at: p.updated_at, // Solo si el backend lo envía; si no, puedes quitarlo
+      })),
+    };
+    console.log("Contenido de basketItem:", JSON.stringify(basketItem, null, 2));
+
+    addToGlobalBasket(basketItem); // usamos el del contexto
+    Alert.alert('Added to basket', `${summary.name} has been added.`);
+  } catch (error) {
+    console.error('Error fetching prices:', error);
+    Alert.alert('Error', 'Could not fetch prices for this product.');
+  }
+};
+
   
 
   return (
@@ -198,7 +202,7 @@ export default function HomeScreen() {
               <Image source={{ uri: getImageUrl(product.image_url) }} style={styles.productImage} />
               <View style={{ marginLeft: 10, flex: 1 }}>
                 <Text style={styles.productName}>{product.name}</Text>
-                <Text numberOfLines={3} ellipsizeMode="tail" style={styles.productDescription}>{product.description}</Text>
+                <Text numberOfLines={3} ellipsizeMode="tail" style={styles.productDescription}>{product.description || product.name}</Text>
                 <Text style={styles.productCategory}>Category: {product.category}</Text>
               </View>
             </View>

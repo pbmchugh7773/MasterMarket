@@ -27,7 +27,7 @@ export default function MeScreen() {
       }
 
       try {
-        const response = await axios.get('https://mastermarket-production.up.railway.app/auth/me', {
+        const response = await axios.get('http://192.168.1.25:8000/auth/me', {
           headers: {
             Authorization: `Bearer ${token}`,
           },

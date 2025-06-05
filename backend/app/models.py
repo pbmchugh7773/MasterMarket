@@ -28,7 +28,22 @@ class Product(Base):
     quantity = Column(Integer)
     image_url = Column(String)
     barcode = Column(String, index=True) 
-    # Define relationships if needed
+    # Define relationshwith GenericProduct
+    generic_product_id = Column(Integer, ForeignKey("generic_products.id"), nullable=True)
+    generic_product = relationship("GenericProduct", back_populates="products")
+
+
+class GenericProduct(Base):
+    __tablename__ = "generic_products"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+    image_url = Column(String, nullable=True)
+    # Si quieres agregar más campos genéricos, aquí van
+
+    # Relación reversa
+    products = relationship("Product", back_populates="generic_product")
 
 class Price(Base):
     __tablename__ = "prices"

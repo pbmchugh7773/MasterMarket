@@ -18,6 +18,7 @@ from app.routes import products_with_prices
 from app.routes import admin
 from app.models import Base
 from app.database import engine
+from app.routes import products_summary
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -53,6 +54,7 @@ app.include_router(price_routes.router)
 app.include_router(users.router)
 app.include_router(routes_user.router)
 app.include_router(admin.router)
+app.include_router(products_summary.router)
 
 
 

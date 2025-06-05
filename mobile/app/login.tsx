@@ -28,7 +28,7 @@ export default function LoginScreen() {
       data.append("password", password);
 
       const response = await axios.post(
-        "https://mastermarket-production.up.railway.app/auth/login",
+        "http://192.168.1.25:8000/auth/login",
         data,
         {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -47,7 +47,7 @@ export default function LoginScreen() {
   const handleRegister = async () => {
     try {
       const response = await axios.post(
-        "https://mastermarket-production.up.railway.app/auth/register",
+        "http://192.168.1.25:8000/auth/register",
         {
           email,
           password,

@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
-from app.models import Price, PriceHistory, Product, Basket
-from app.schemas import PriceCreate, PriceUpdate, ProductCreate, ProductUpdate, BasketCreate, BasketUpdate
+from app.models import Price, PriceHistory, Product, Basket, GenericProduct
+from app.schemas import PriceCreate, PriceUpdate, ProductCreate, ProductUpdate, BasketCreate, BasketUpdate, ProductSummaryResponse, ProductSummaryItem
 from datetime import datetime
 from app.models import User
-from app.schemas import UserCreate
+from app.schemas import UserCreate, UserUpdate, ProductOrGenericOut
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from app.models import Price
@@ -201,4 +201,126 @@ def update_user(db: Session, user_id: int, update_data: dict) -> models.User:
     db.commit()
     db.refresh(user)
     return user
+# Busca producto y precio tanto si es producto o generico
+def get_product_summary(db: Session, product_id: int) -> ProductSummaryResponse:
+    product = db.query(Product).filter(Product.id == product_id).first()
 
+    if product:
+        # Si el producto tiene un genérico asociado y es distinto de 0/null
+        if product.generic_product_id not in (None, 0):
+            generic_id = product.generic_product_id
+            generic = db.query(GenericProduct).filter(GenericProduct.id == generic_id).first()
+            if not generic:
+                return None
+            products = db.query(Product).filter(Product.generic_product_id == generic_id).all()
+            product_summaries = []
+            for p in products:
+                price_obj = (
+                    db.query(Price)
+                    .filter(Price.product_id == p.id)
+                    .order_by(Price.updated_at.desc())
+                    .first()
+                )
+                product_summaries.append(ProductSummaryItem(
+                    id=p.id,
+                    name=p.name,
+                    brand=p.brand,
+                    barcode=p.barcode,
+                    image_url=p.image_url,
+                    supermarket=price_obj.supermarket,  # Cambia aquí si tienes otro campo para supermarket
+                    last_price=price_obj.price if price_obj else None
+                ))
+            return ProductSummaryResponse(
+                id=generic.id,
+                name=generic.name,
+                category=generic.category,
+                image_url=generic.image_url,
+                products=product_summaries
+            )
+        else:
+            # Producto simple (sin genérico asociado)
+            prices = db.query(Price).filter(Price.product_id == product.id).all()
+            product_summaries = []
+            for price_obj in prices:
+                product_summaries.append(ProductSummaryItem(
+                    id=product.id,
+                    name=product.name,
+                    brand=product.brand,
+                    barcode=product.barcode,
+                    image_url=product.image_url,
+                    supermarket=price_obj.supermarket,
+                    last_price=price_obj.price
+                ))
+            return ProductSummaryResponse(
+                id=product.id,
+                name=product.name,
+                category=product.category,
+                image_url=product.image_url,
+                products=product_summaries
+            )
+
+    # Si no existe el producto, busca el genérico por ese ID
+    generic = db.query(GenericProduct).filter(GenericProduct.id == product_id).first()
+    if generic:
+        products = db.query(Product).filter(Product.generic_product_id == generic.id).all()
+        product_summaries = []
+        for p in products:
+            price_obj = (
+                db.query(Price)
+                .filter(Price.product_id == p.id)
+                .order_by(Price.updated_at.desc())
+                .first()
+            )
+            product_summaries.append(ProductSummaryItem(
+                id=p.id,
+                name=p.name,
+                brand=p.brand,
+                barcode=p.barcode,
+                image_url=p.image_url,
+                supermarket=price_obj.supermarket,  # Cambia aquí si tienes otro campo para supermarket
+                last_price=price_obj.price if price_obj else None
+            ))
+        return ProductSummaryResponse(
+            id=generic.id,
+            name=generic.name,
+            category=generic.category,
+            image_url=generic.image_url,
+            products=product_summaries
+        )
+    # Si no existe ni producto ni genérico, devuelve None (404 en el endpoint)
+    return None
+
+
+
+def get_all_simple_products(db: Session) -> list[ProductOrGenericOut]:
+    # Productos sin genérico
+    simple_products = db.query(Product).filter(Product.generic_product_id == None).all()
+    # Genéricos
+    generic_products = db.query(GenericProduct).all()
+    all_products = []
+
+    for p in simple_products:
+        all_products.append(ProductOrGenericOut(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            category=p.category,
+            brand=p.brand,
+            quantity=p.quantity,
+            image_url=p.image_url,
+            barcode=p.barcode
+        ))
+
+    for g in generic_products:
+        all_products.append(ProductOrGenericOut(
+            id=g.id,
+            name=g.name,
+            description=g.description,         # GenericProduct no tiene descripción
+            category=g.category,
+            brand="",
+            quantity=None,
+            image_url=g.image_url,
+            barcode=""
+        ))
+
+    return all_products

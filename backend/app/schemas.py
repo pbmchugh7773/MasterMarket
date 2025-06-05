@@ -1,7 +1,7 @@
 # app/schemas.py
 
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 # ---------- Price ----------
@@ -60,6 +60,32 @@ class Product(ProductBase):
 
     class Config:
         from_attributes = True
+
+class ProductOrGenericOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = ""
+    category: str
+    brand: Optional[str] = ""
+    quantity: Optional[int] = None
+    image_url: Optional[str] = None
+    barcode: Optional[str] = ""
+
+class ProductSummaryItem(BaseModel):
+    id: int
+    name: str
+    brand: Optional[str] = None
+    barcode: str
+    image_url: Optional[str] = None
+    supermarket: Optional[str] = None
+    last_price: Optional[float] = None
+
+class ProductSummaryResponse(BaseModel):
+    id: int
+    name: str
+    category: str
+    image_url: Optional[str] = None
+    products: List[ProductSummaryItem]
 
 # ---------- Basket ----------
 class BasketBase(BaseModel):

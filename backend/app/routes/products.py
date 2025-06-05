@@ -7,9 +7,10 @@ import boto3
 from botocore.exceptions import BotoCoreError, NoCredentialsError
 import os
 from app import crud
-from app.models import Product as ProductModel, Price
-from app.schemas import Product as ProductSchema, ProductCreate, ProductUpdate
+from app.models import Product as ProductModel, Price, GenericProduct
+from app.schemas import Product as ProductSchema, ProductCreate, ProductUpdate, ProductOrGenericOut
 from app.database import get_db
+from app.crud import get_all_simple_products
 from PIL import Image
 import io
 
@@ -61,6 +62,12 @@ def upload_to_s3(file: UploadFile, filename: str) -> str:
 @router.get("/", response_model=list[ProductSchema])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_products(db, skip=skip, limit=limit)
+
+# Get products and generic products
+
+@router.get("/all-simple", response_model=list[ProductOrGenericOut])
+def all_simple_products(db: Session = Depends(get_db)):
+    return get_all_simple_products(db)
 
 # Obtener producto por ID
 @router.get("/{product_id}", response_model=ProductSchema)

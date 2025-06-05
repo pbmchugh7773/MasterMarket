@@ -19,9 +19,9 @@ const COLORS = {
   text: "#333333",
   textLight: "#666666",
   buttonText: "#FFFFFF",
-  tesco: "#2ecc71",
-  aldi: "#f1c40f",
-  lidl: "#e74c3c",
+  tesco: "#2ecc71",     // VERDE
+  aldi: "#f1c40f",      // AMARILLO
+  lidl: "#e74c3c",      // ROJO
   danger: "#e74c3c",
   border: "#E0E4E8",
   controlBg: "#F0F2F5",
@@ -60,7 +60,7 @@ const BasketScreen = () => {
   };
   
   const getImageUrl = (imagePath: string) => {
-    return `https://mastermarket-production.up.railway.app${imagePath}`;
+    return `http://192.168.1.25:8000/${imagePath}`;
   };
 
   const PriceWithColor = ({
@@ -92,6 +92,7 @@ const BasketScreen = () => {
     );
   };
 
+  // === Calcula los totales por supermercado ===
   const basketTotals = basket.reduce(
     (acc, item) => {
       item.prices.forEach((p) => {
@@ -105,11 +106,23 @@ const BasketScreen = () => {
     { tesco: 0, aldi: 0, lidl: 0 }
   );
 
-  const maxTotal = Math.max(
-    basketTotals.tesco,
-    basketTotals.aldi,
-    basketTotals.lidl
-  );
+  // === NUEVO: Colores de barra dinámicos según valor ===
+  const totalArray = [
+    { label: "Tesco", value: basketTotals.tesco },
+    { label: "Aldi", value: basketTotals.aldi },
+    { label: "Lidl", value: basketTotals.lidl },
+  ];
+
+  const sorted = [...totalArray].sort((a, b) => a.value - b.value);
+  const lowest = sorted[0].value;
+  const mid = sorted[1].value;
+  const highest = sorted[2].value;
+
+  const colorForValue = (val: number) => {
+    if (val === lowest) return COLORS.tesco;    // Verde
+    if (val === highest) return COLORS.lidl;    // Rojo
+    return COLORS.aldi;                         // Amarillo
+  };
 
   const confirmClearBasket = () => {
     Alert.alert("Vaciar Canasta", "¿Eliminar todos los productos?", [
@@ -121,6 +134,12 @@ const BasketScreen = () => {
       },
     ]);
   };
+
+  const maxTotal = Math.max(
+    basketTotals.tesco,
+    basketTotals.aldi,
+    basketTotals.lidl
+  );
 
   return (
     <View style={styles.container}>
@@ -162,12 +181,11 @@ const BasketScreen = () => {
                             ],
                             maxTotal
                           ),
-                          backgroundColor:
-                            label === "Tesco"
-                              ? COLORS.tesco
-                              : label === "Aldi"
-                              ? COLORS.aldi
-                              : COLORS.lidl,
+                          backgroundColor: colorForValue(
+                            basketTotals[
+                              label.toLowerCase() as "tesco" | "aldi" | "lidl"
+                            ]
+                          ),
                         },
                       ]}
                     />
