@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchPricesByProduct } from '../services/api'; // Ajustá el path si es necesario
+import { fetchPricesByProduct, fetchPricesByProductGeneric } from '../services/api'; // Ajustá el path si es necesario
 
 type PriceEntry = {
   supermarket: 'Tesco' | 'Aldi' | 'Lidl';
@@ -93,12 +93,12 @@ export const BasketProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const updatedBasket = await Promise.all(
         basket.map(async (item) => {
-          const prices = await fetchPricesByProduct(item.id);
+          const prices = await fetchPricesByProductGeneric(item.id);
           return {
             ...item,
-            prices: prices.map((p: any) => ({
+            prices: prices.products.map((p: any) => ({
               supermarket: p.supermarket,
-              price: p.price,
+              price: p.last_price,
               updated_at: p.updated_at,
             })),
           };

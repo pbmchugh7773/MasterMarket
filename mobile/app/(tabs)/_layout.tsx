@@ -6,7 +6,40 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 import { BasketProvider } from '../../context/BasketContext';
+import { useBasket } from '../../context/BasketContext';
 import { useAuth } from '../../context/AuthContext';
+
+function BasketTabIconWithBadge({ color }: { color: string }) {
+  const { basket } = useBasket();
+  const count = basket.length;
+
+  return (
+    <View style={{ width: 28, height: 28 }}>
+      <FontAwesome name="shopping-basket" color={color} size={28} />
+      {count > 0 && (
+        <View
+          style={{
+            position: 'absolute',
+            top: -3,
+            right: -10,
+            backgroundColor: 'red',
+            borderRadius: 10,
+            minWidth: 18,
+            height: 18,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: 3,
+            zIndex: 1,
+          }}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 11 }}>
+            {count}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -19,6 +52,7 @@ export default function Layout() {
   const colorScheme = useColorScheme();
   const showHeader = useClientOnlyValue(false, true);
   const { user, loading } = useAuth();
+
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,12 +81,13 @@ export default function Layout() {
       },
     },
     {
-      name: 'basket',
-      options: {
-        title: 'Basket',
-        tabBarIcon: ({ color }) => <TabBarIcon name="shopping-basket" color={color} />,
-      },
-    },
+  name: 'basket',
+  options: {
+    title: 'Basket',
+    tabBarIcon: ({ color }) => <BasketTabIconWithBadge color={color} />,
+    // ¡NO pongas tabBarBadge aquí!
+  },
+},
     {
       name: 'me',
       options: {
