@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from app.models import Price, PriceHistory, Product, Basket, GenericProduct
 from app.schemas import PriceCreate, PriceUpdate, ProductCreate, ProductUpdate, BasketCreate, BasketUpdate, ProductSummaryResponse, ProductSummaryItem
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models import User
 from app.schemas import UserCreate, UserUpdate, ProductOrGenericOut
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ def create_price(db: Session, price: PriceCreate):
 
         # Actualizar el precio actual
         existing.price = price.price
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(existing)
         return existing
@@ -39,7 +39,7 @@ def create_price(db: Session, price: PriceCreate):
             product_id=price.product_id,
             supermarket=price.supermarket,
             price=price.price,
-            updated_at=datetime.utcnow()
+            updated_at=datetime.now(timezone.utc)
         )
         db.add(new_price)
         db.commit()
@@ -51,7 +51,7 @@ def update_price(db: Session, price_id: int, new_price: float):
     if not db_price:
         return None
     db_price.price = new_price
-    db_price.updated_at = datetime.utcnow()
+    db_price.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(db_price)
     return db_price
