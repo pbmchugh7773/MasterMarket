@@ -32,7 +32,7 @@ class Product(Base):
     generic_product_id = Column(Integer, ForeignKey("generic_products.id"), nullable=True)
     generic_product = relationship("GenericProduct", back_populates="products")
 
-
+#new table for generic products
 class GenericProduct(Base):
     __tablename__ = "generic_products"
     id = Column(Integer, primary_key=True, index=True)
