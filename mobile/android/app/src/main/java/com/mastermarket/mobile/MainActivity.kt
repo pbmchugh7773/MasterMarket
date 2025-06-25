@@ -1,4 +1,4 @@
-package com.pbmchugh7773.mobile
+package com.mastermarket.mobile
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

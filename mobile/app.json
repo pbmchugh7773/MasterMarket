@@ -21,7 +21,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.pbmchugh7773.mobile"
+      "package": "com.mastermarket.mobile"
     },
     "web": {
       "bundler": "metro",
@@ -33,6 +33,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "680742b4-d42d-4b92-adb7-ff447ae640b1"
+      }
     }
   }
 }

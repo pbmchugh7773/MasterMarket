@@ -70,8 +70,11 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <Text style={styles.title}>
-        {isRegistering ? "Crear cuenta" : "Iniciar sesión"}
+        {isRegistering ? "Crear cuenta" : "Login"}
       </Text>
+       <Text style={styles.buttonText }>
+        Url API ${API_URL}
+      </Text>     
 
       {isRegistering && (
         <TextInput

@@ -1,1 +1,1 @@
-export const API_URL = 'http://108.129.151.204';
+export const API_URL = 'https://api.mastermarketapp.com';

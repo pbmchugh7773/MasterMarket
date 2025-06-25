@@ -15,6 +15,7 @@ import { fetchPricesByProduct } from '../../services/api';
 import { fetchPricesByProductGeneric } from '../../services/api';
 import { useBasket } from '../../context/BasketContext';
 import { API_URL } from "../../config";
+
 type Product = {
   id: number;
   name: string;
@@ -40,8 +41,10 @@ const categories = [
   { name: 'Inspiration & Events', icon: require('../../assets/icons/events.png') },
 ];
 
+const PRODUCTS_PER_PAGE = 10;
+
 const getImageUrl = (imagePath: string) => {
-  return `${API_URL}/${imagePath}`;
+  return `${imagePath}`;
 };
 
 
@@ -49,6 +52,8 @@ export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
   const { addToBasket: addToGlobalBasket } = useBasket();
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
 
@@ -80,7 +85,7 @@ export default function HomeScreen() {
     if (selectedCategory && selectedCategory !== "All") {
       filtered = filtered.filter(
         (product) => 
-          (product.category || '').trim().toLowerCase() === selectedCategory.trim().toLowerCase()
+          (product.category).trim().toLowerCase() === selectedCategory.trim().toLowerCase()
       );
     }
   
@@ -92,13 +97,27 @@ export default function HomeScreen() {
     }
   
     setFilteredProducts(filtered);
+    setCurrentPage(1); // Resetear a la primera página cuando cambian los filtros
   };
   
+
+  // Actualizar productos mostrados basado en la paginación
+  const updateDisplayedProducts = () => {
+    const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
+    const endIndex = startIndex + PRODUCTS_PER_PAGE;
+    const productsToShow = filteredProducts.slice(startIndex, endIndex);
+    setDisplayedProducts(productsToShow);
+  };
 
   // Actualizamos el filtrado cada vez que cambian las dependencias
   useEffect(() => {
     updateFilteredProducts();
   }, [searchText, selectedCategory, products]);
+
+  // Actualizamos los productos mostrados cuando cambian los filtros o la página
+  useEffect(() => {
+    updateDisplayedProducts();
+  }, [filteredProducts, currentPage]);
 
   const handleSearch = (text: string) => {
     console.log("Search text changed:", text);
@@ -115,36 +134,82 @@ export default function HomeScreen() {
     }
   };
 
-const addToBasket = async (product: Product) => {
-  try {
-    const summary = await fetchPricesByProductGeneric(product.id);
+  const addToBasket = async (product: Product) => {
+    try {
+      const summary = await fetchPricesByProductGeneric(product.id);
 
-    const basketItem = {
-      id: summary.id,
-      name: summary.name,
-      image_url: summary.image_url,
-      quantity: 1,
-      // Ajuste aquí:
-      prices: summary.products.map((p: any) => ({
-        supermarket: p.supermarket,
-        price: p.last_price,
-        updated_at: p.updated_at, // Solo si el backend lo envía; si no, puedes quitarlo
-      })),
-    };
-    console.log("Contenido de basketItem:", JSON.stringify(basketItem, null, 2));
+      const basketItem = {
+        id: summary.id,
+        name: summary.name,
+        image_url: summary.image_url,
+        quantity: 1,
+        // Ajuste aquí:
+        prices: summary.products.map((p: any) => ({
+          supermarket: p.supermarket,
+          price: p.last_price,
+          updated_at: p.updated_at, // Solo si el backend lo envía; si no, puedes quitarlo
+        })),
+      };
+      console.log("Contenido de basketItem:", JSON.stringify(basketItem, null, 2));
 
-    addToGlobalBasket(basketItem); // usamos el del contexto
-    Alert.alert('Added to basket', `${summary.name} has been added.`);
-  } catch (error) {
-    console.error('Error fetching prices:', error);
-    Alert.alert('Error', 'Could not fetch prices for this product.');
-  }
-};
+      addToGlobalBasket(basketItem); // usamos el del contexto
+      Alert.alert('Added to basket', `${summary.name} has been added.`);
+    } catch (error) {
+      console.error('Error fetching prices:', error);
+      Alert.alert('Error', 'Could not fetch prices for this product.');
+    }
+  };
 
-  
+  // Calcular información de paginación
+  const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
+  const hasNextPage = currentPage < totalPages;
+  const hasPrevPage = currentPage > 1;
+
+  const goToNextPage = () => {
+    if (hasNextPage) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const goToPrevPage = () => {
+    if (hasPrevPage) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
+
+  // Generar números de página para mostrar
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxPagesToShow = 5;
+    
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      const startPage = Math.max(1, currentPage - 2);
+      const endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+      
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i);
+      }
+    }
+    
+    return pages;
+  };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView 
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 10 }}
+    >
+      
       <Text style={styles.title}>MasterMarket</Text>
 
       <TextInput
@@ -188,26 +253,79 @@ const addToBasket = async (product: Product) => {
           </Text>
         )}
 
+        {/* Información de paginación */}
+        {filteredProducts.length > 0 && (
+          <Text style={styles.paginationInfo}>
+            Showing {((currentPage - 1) * PRODUCTS_PER_PAGE) + 1}-{Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length)} of {filteredProducts.length} products
+          </Text>
+        )}
+
         {filteredProducts.length === 0 && (
           <Text style={styles.noProductsText}>
-            {searchText.trim() === '' && !selectedCategory 
+            {searchText.trim() === '' && selectedCategory === "All"
               ? 'Select a category or search for products.' 
               : 'No products found.'}
           </Text>
         )}
         
-        {filteredProducts.map((product) => (
+        {/* Productos mostrados en la página actual */}
+        {displayedProducts.map((product) => (
           <TouchableOpacity key={product.id} onPress={() => addToBasket(product)}>
             <View style={styles.productCard}>
               <Image source={{ uri: getImageUrl(product.image_url) }} style={styles.productImage} />
               <View style={{ marginLeft: 10, flex: 1 }}>
                 <Text style={styles.productName}>{product.name}</Text>
-                <Text numberOfLines={3} ellipsizeMode="tail" style={styles.productDescription}>{product.description || product.name}</Text>
+                
                 <Text style={styles.productCategory}>Category: {product.category}</Text>
               </View>
             </View>
           </TouchableOpacity>
         ))}
+
+        {/* Controles de paginación */}
+        {totalPages > 1 && (
+          <View style={styles.paginationContainer}>
+            <TouchableOpacity 
+              style={[styles.paginationButton, !hasPrevPage && styles.disabledButton]}
+              onPress={goToPrevPage}
+              disabled={!hasPrevPage}
+            >
+              <Text style={[styles.paginationButtonText, !hasPrevPage && styles.disabledButtonText]}>
+                Previous
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.pageNumbersContainer}>
+              {getPageNumbers().map((pageNum) => (
+                <TouchableOpacity
+                  key={pageNum}
+                  style={[
+                    styles.pageNumberButton,
+                    currentPage === pageNum && styles.activePageButton
+                  ]}
+                  onPress={() => goToPage(pageNum)}
+                >
+                  <Text style={[
+                    styles.pageNumberText,
+                    currentPage === pageNum && styles.activePageText
+                  ]}>
+                    {pageNum}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.paginationButton, !hasNextPage && styles.disabledButton]}
+              onPress={goToNextPage}
+              disabled={!hasNextPage}
+            >
+              <Text style={[styles.paginationButtonText, !hasNextPage && styles.disabledButtonText]}>
+                Next
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       
     </ScrollView>
@@ -280,6 +398,13 @@ const styles = StyleSheet.create({
     color: '#5A31F4',
     fontWeight: '500',
   },
+  paginationInfo: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   noProductsText: { 
     color: 'gray',
     textAlign: 'center',
@@ -315,5 +440,57 @@ const styles = StyleSheet.create({
     fontSize: 10, 
     color: '#888', 
     marginTop: 4 
+  },
+  // Estilos de paginación
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  paginationButton: {
+    backgroundColor: '#5A31F4',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 8,
+    marginHorizontal: 10,
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#CCC',
+  },
+  paginationButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  disabledButtonText: {
+    color: '#888',
+  },
+  pageNumbersContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    
+  },
+  pageNumberButton: {
+    backgroundColor: '#F0F0F0',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    minWidth: 35,
+    alignItems: 'center',
+  },
+  activePageButton: {
+    backgroundColor: '#5A31F4',
+  },
+  pageNumberText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+  },
+  activePageText: {
+    color: '#FFFFFF',
   },
 });

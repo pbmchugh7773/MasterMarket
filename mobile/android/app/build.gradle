@@ -86,9 +86,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.pbmchugh7773.mobile'
+    namespace 'com.mastermarket.mobile'
     defaultConfig {
-        applicationId 'com.pbmchugh7773.mobile'
+        applicationId 'com.mastermarket.mobile'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

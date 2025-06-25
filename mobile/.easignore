@@ -1,0 +1,53 @@
+# ⚙️ Node dependencies
+node_modules/
+
+# 🧪 Caché y archivos temporales
+.expo/
+.expo-shared/
+.cache/
+*.log
+*.tmp
+*.bak
+*.swp
+
+# 🏗️ Builds locales
+build/
+dist/
+web-build/
+android/app/build/
+
+# 📱 Directorios nativos (si no haces prebuild)
+android/
+ios/
+
+# 🐍 Entornos virtuales de Python (por si copiaste algo de backend)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# 🛠️ Configs de IDE
+.vscode/
+.idea/
+
+# 💻 Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# 🔒 Archivos de entorno
+.env
+.env.*
+.env.local
+
+# 🧪 Testing outputs
+coverage/
+jest-*
+
+# 📦 Otros archivos comprimidos o exportados
+*.zip
+*.tar
+*.tar.gz
+
+# 🔍 Git
+.git/
+.gitignore

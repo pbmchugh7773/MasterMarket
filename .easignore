@@ -1,0 +1,16 @@
+# .easignore en C:\Repository\MasterMarket_Project\.easignore
+
+# Ignorar todo menos la carpeta mobile
+*
+!mobile/
+!mobile/**
+
+# Opcionalmente, si quieres excluir node_modules de mobile (se instala remótamente)
+mobile/node_modules/
+
+# También ignora estos si existen
+frontend/
+backend/
+.venv/
+venv/
+*.log
