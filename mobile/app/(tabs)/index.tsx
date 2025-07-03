@@ -22,11 +22,13 @@ import { router } from 'expo-router';
 
 // Import camera modules conditionally to avoid Expo Go issues
 let Camera: any = null;
+let BarCodeScanner: any = null;
 let ImagePicker: any = null;
 let Location: any = null;
 
 try {
   Camera = require('expo-camera').Camera;
+  BarCodeScanner = require('expo-camera').BarCodeScanner;
   ImagePicker = require('expo-image-picker');
   Location = require('expo-location');
 } catch (error) {
@@ -657,6 +659,25 @@ export default function HomeScreen() {
     return null;
   }
 
+  // Country and Currency configuration
+  const getCountryData = () => {
+    const countryMap = {
+      'UK': { flag: '🇬🇧', currency: 'GBP', symbol: '£' },
+      'US': { flag: '🇺🇸', currency: 'USD', symbol: '$' },
+      'IE': { flag: '🇮🇪', currency: 'EUR', symbol: '€' },
+      'ES': { flag: '🇪🇸', currency: 'EUR', symbol: '€' },
+      'FR': { flag: '🇫🇷', currency: 'EUR', symbol: '€' },
+      'DE': { flag: '🇩🇪', currency: 'EUR', symbol: '€' },
+      'IT': { flag: '🇮🇹', currency: 'EUR', symbol: '€' },
+      'CA': { flag: '🇨🇦', currency: 'CAD', symbol: '$' },
+      'AU': { flag: '🇦🇺', currency: 'AUD', symbol: '$' },
+    };
+    
+    return countryMap[user?.country] || { flag: '🌍', currency: 'GBP', symbol: '£' };
+  };
+
+  const countryData = getCountryData();
+
   return (
     <ScrollView 
       style={styles.container}
@@ -665,8 +686,18 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <Text style={styles.title}>MasterMarket</Text>
-      <Text style={styles.subtitle}>Community Price Tracker</Text>
+      <View style={styles.header}>
+        <View style={styles.titleSection}>
+          <Text style={styles.title}>MasterMarket</Text>
+          <Text style={styles.subtitle}>Community Price Tracker</Text>
+        </View>
+        
+        {/* Country and Currency Indicator */}
+        <View style={styles.countryIndicator}>
+          <Text style={styles.countryFlag}>{countryData.flag}</Text>
+          <Text style={styles.currencySymbol}>{countryData.symbol}</Text>
+        </View>
+      </View>
 
       {/* Debug Button - Temporary */}
       <TouchableOpacity 
@@ -767,11 +798,11 @@ export default function HomeScreen() {
                     <View key={priceData.id} style={styles.priceCard}>
                       {/* Price and Store Row */}
                       <View style={styles.priceTopRow}>
-                        <Text style={styles.priceAmount}>£{priceData.price.toFixed(2)}</Text>
+                        <Text style={styles.priceAmount}>{countryData.symbol}{priceData.price.toFixed(2)}</Text>
                         {priceData.price_change_percentage !== null && (
                           <View style={styles.priceChangeContainer}>
                             <Ionicons 
-                              name={priceData.price_change_percentage > 0 ? "arrow-up" : priceData.price_change_percentage < 0 ? "arrow-down" : "minus"}
+                              name={priceData.price_change_percentage > 0 ? "arrow-up" : priceData.price_change_percentage < 0 ? "arrow-down" : "remove"}
                               size={12} 
                               color={priceData.price_change_percentage > 0 ? "#FF0000" : priceData.price_change_percentage < 0 ? "#00FF00" : "#808080"} 
                             />
@@ -901,7 +932,7 @@ export default function HomeScreen() {
                   {/* Price and Actions */}
                   <View style={styles.compactPriceActions}>
                     <View style={styles.compactPriceRow}>
-                      <Text style={styles.compactPriceAmount}>£{price.price.toFixed(2)}</Text>
+                      <Text style={styles.compactPriceAmount}>{countryData.symbol}{price.price.toFixed(2)}</Text>
                       {/* Verified Badge inline with price */}
                       {isVerified && (
                         <View style={styles.compactVerifiedBadge}>
@@ -1001,7 +1032,7 @@ export default function HomeScreen() {
                 </TouchableOpacity>
                 
                 <View style={styles.priceInputContainer}>
-                  <Text style={styles.currencySymbol}>£</Text>
+                  <Text style={styles.currencySymbol}>{countryData.symbol}</Text>
                   <TextInput
                     style={styles.priceInput}
                     placeholder="0.00"
@@ -1316,19 +1347,56 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9F9F9' 
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  titleSection: {
+    flex: 1,
+    alignItems: 'center',
+  },
   title: { 
     fontSize: 28, 
     fontWeight: 'bold', 
     marginBottom: 4, 
     textAlign: 'center', 
     color: '#5A31F4',
-    marginTop: 20,
   },
   subtitle: {
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
-    marginBottom: 16,
+  },
+  countryIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  countryFlag: {
+    fontSize: 14,
+    marginRight: 6,
+  },
+  currencySymbol: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5A31F4',
   },
   updatePriceButton: {
     backgroundColor: '#5A31F4',

@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
@@ -18,16 +19,9 @@ import { API_URL } from "../config";
 import { registerUser } from "../services/api";
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 
-// Google OAuth Client ID
+// Constants
 const GOOGLE_CLIENT_ID = '758094174857-oafpsei99h13tpgujjlcbt02bthust93.apps.googleusercontent.com';
 
-// Configure Google Sign-In
-GoogleSignin.configure({
-  scopes: ['profile', 'email'],
-  webClientId: GOOGLE_CLIENT_ID, // This is needed to get the idToken
-});
-
-// Country and currency options
 const COUNTRIES = [
   { code: "UK", name: "United Kingdom", currency: "GBP" },
   { code: "US", name: "United States", currency: "USD" },
@@ -40,17 +34,150 @@ const COUNTRIES = [
   { code: "AU", name: "Australia", currency: "AUD" },
 ];
 
+// Configure Google Sign-In
+GoogleSignin.configure({
+  scopes: ['profile', 'email'],
+  webClientId: GOOGLE_CLIENT_ID,
+});
+
+// Types
+interface GoogleAuthData {
+  idToken: string;
+  email: string;
+  fullName: string;
+}
+
+interface Country {
+  code: string;
+  name: string;
+  currency: string;
+}
+
+// Components
+const CountrySelector: React.FC<{
+  countries: Country[];
+  selectedCountry: string;
+  onSelectCountry: (code: string, currency: string) => void;
+}> = ({ countries, selectedCountry, onSelectCountry }) => (
+  <View style={styles.pickerContainer}>
+    <Text style={styles.pickerLabel}>Country:</Text>
+    <ScrollView 
+      horizontal 
+      showsHorizontalScrollIndicator={false}
+      style={styles.countryScroll}
+    >
+      {countries.map((country) => (
+        <TouchableOpacity
+          key={country.code}
+          style={[
+            styles.countryChip,
+            selectedCountry === country.code && styles.selectedChip
+          ]}
+          onPress={() => onSelectCountry(country.code, country.currency)}
+        >
+          <Text style={[
+            styles.countryChipText,
+            selectedCountry === country.code && styles.selectedChipText
+          ]}>
+            {country.name}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </View>
+);
+
+const CountrySelectionModal: React.FC<{
+  visible: boolean;
+  googleAuthData: GoogleAuthData | null;
+  selectedCountry: string;
+  onSelectCountry: (code: string, currency: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}> = ({ visible, googleAuthData, selectedCountry, onSelectCountry, onConfirm, onCancel }) => (
+  <Modal
+    visible={visible}
+    animationType="slide"
+    transparent={true}
+    onRequestClose={onCancel}
+  >
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>Complete Your Profile</Text>
+        <Text style={styles.modalSubtitle}>
+          Welcome {googleAuthData?.fullName}! Please select your country to continue.
+        </Text>
+
+        <Text style={styles.pickerLabel}>Select Your Country:</Text>
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          style={styles.countryList}
+        >
+          {COUNTRIES.map((country) => (
+            <TouchableOpacity
+              key={country.code}
+              style={[
+                styles.countryItem,
+                selectedCountry === country.code && styles.selectedCountryItem
+              ]}
+              onPress={() => onSelectCountry(country.code, country.currency)}
+            >
+              <Text style={[
+                styles.countryItemText,
+                selectedCountry === country.code && styles.selectedCountryItemText
+              ]}>
+                {country.name}
+              </Text>
+              <Text style={styles.currencyText}>
+                {country.currency}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.modalButtons}>
+          <TouchableOpacity
+            style={[styles.modalButton, styles.cancelButton]}
+            onPress={onCancel}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modalButton, styles.confirmButton]}
+            onPress={onConfirm}
+          >
+            <Text style={styles.confirmButtonText}>Continue</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </Modal>
+);
+
+// Main Component
 export default function LoginScreen() {
+  // Form state
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [country, setCountry] = useState("UK");
   const [currency, setCurrency] = useState("GBP");
+  
+  // UI state
   const [isRegistering, setIsRegistering] = useState(false);
-  const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [showCountrySelection, setShowCountrySelection] = useState(false);
-  const [googleAuthData, setGoogleAuthData] = useState<any>(null);
+  const [googleAuthData, setGoogleAuthData] = useState<GoogleAuthData | null>(null);
+  
+  // Hooks
+  const { login } = useAuth();
+
+  // Handlers
+  const handleSelectCountry = (countryCode: string, countryCurrency: string) => {
+    setCountry(countryCode);
+    setCurrency(countryCurrency);
+  };
+
   const handleLogin = async () => {
     try {
       const data = new URLSearchParams();
@@ -60,16 +187,14 @@ export default function LoginScreen() {
       const response = await axios.post(
         `${API_URL}/auth/login`,
         data,
-        {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        }
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
       );
 
       const { access_token, user } = response.data;
       await login(user, access_token);
     } catch (err) {
       const error = err as AxiosError;
-      Alert.alert("Error", "Credenciales incorrectas o servidor no disponible");
+      Alert.alert("Error", "Invalid credentials or server unavailable");
       console.error(error.response?.data || error.message);
     }
   };
@@ -84,14 +209,11 @@ export default function LoginScreen() {
         currency,
       });
 
-      Alert.alert("✅ Usuario creado", "Ya puedes iniciar sesión");
+      Alert.alert("✅ Success", "Account created! You can now sign in");
       setIsRegistering(false);
-      // Clear form
-      setEmail("");
-      setPassword("");
-      setFullName("");
+      resetForm();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "No se pudo crear el usuario");
+      Alert.alert("Error", error.message || "Failed to create account");
       console.error(error);
     }
   };
@@ -103,61 +225,64 @@ export default function LoginScreen() {
     }
 
     try {
-      // Check if user exists by attempting login
-      try {
-        const response = await axios.post(
-          `${API_URL}/users/google-auth`,
-          { google_token: idToken },
-          {
-            headers: { "Content-Type": "application/json" },
-          }
-        );
+      console.log("🔄 Attempting Google auth with backend...");
+      const response = await axios.post(
+        `${API_URL}/users/google-auth`,
+        { google_token: idToken },
+        { headers: { "Content-Type": "application/json" } }
+      );
 
-        const { access_token, user } = response.data;
-        await login(user, access_token);
-      } catch (err: any) {
-        // If user doesn't exist, show country selection
-        if (err.response?.status === 400 || err.response?.status === 404) {
-          // Get user info from Google using access token
-          const userInfoResponse = await fetch(
-            `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${accessToken}`
-          );
-          const googleUserInfo = await userInfoResponse.json();
+      console.log("✅ User exists, logging in...");
+      const { access_token, user } = response.data;
+      await login(user, access_token);
+    } catch (err: any) {
+      console.log("🔍 Backend response error:", {
+        status: err.response?.status,
+        data: err.response?.data,
+        detail: err.response?.data?.detail
+      });
+      
+      // Check if it's a new user that needs country/currency selection
+      if (err.response?.status === 400 && 
+          (err.response?.data?.detail?.includes("Country and currency are required") ||
+           err.response?.data?.detail?.includes("Google authentication failed: 400: Country and currency are required"))) {
+        console.log("📍 New user detected, showing country selection");
+        
+        // Parse user info from the ID token
+        try {
+          const tokenParts = idToken.split('.');
+          const payload = JSON.parse(atob(tokenParts[1]));
           
-          // Store Google data temporarily
           setGoogleAuthData({
             idToken,
-            email: googleUserInfo.email,
-            fullName: googleUserInfo.name
+            email: payload.email,
+            fullName: payload.name
           });
           setShowCountrySelection(true);
-        } else {
-          throw err;
+        } catch (parseError) {
+          console.error("Failed to parse ID token:", parseError);
+          Alert.alert("Error", "Failed to process Google authentication");
         }
+      } else {
+        Alert.alert("Error", "Google authentication failed");
+        console.error(err.response?.data || err.message);
       }
-    } catch (err) {
-      const error = err as AxiosError;
-      Alert.alert("Error", "Google authentication failed");
-      console.error(error.response?.data || error.message);
     }
   };
 
   const handleGoogleSignIn = async () => {
     try {
       console.log('🔍 Starting Google Sign-In...');
-      console.log('🔑 Using Client ID:', GOOGLE_CLIENT_ID);
       
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
       console.log('✅ Google Sign-In successful:', userInfo);
-      console.log('🆔 ID Token from userInfo:', userInfo.idToken);
       
-      // Get the tokens
       const tokens = await GoogleSignin.getTokens();
       console.log('🎫 Tokens received:', tokens);
       
-      // Use idToken from userInfo or tokens
-      const idToken = userInfo.idToken || tokens.idToken;
+      // The idToken comes from tokens, not from userInfo
+      const idToken = tokens.idToken;
       const accessToken = tokens.accessToken;
       
       if (idToken) {
@@ -187,42 +312,63 @@ export default function LoginScreen() {
     if (!googleAuthData) return;
 
     try {
-      // Create user with country/currency selection
+      console.log('🎯 Completing Google registration with:', {
+        country,
+        currency,
+        email: googleAuthData.email,
+        fullName: googleAuthData.fullName
+      });
+      
+      const requestData = { 
+        google_token: googleAuthData.idToken,
+        country: country,
+        currency: currency
+      };
+      
+      console.log('📤 Sending request:', requestData);
+      
       const response = await axios.post(
         `${API_URL}/users/google-auth`,
-        { 
-          google_token: googleAuthData.idToken,
-          country: country,
-          currency: currency
-        },
-        {
-          headers: { "Content-Type": "application/json" },
-        }
+        requestData,
+        { headers: { "Content-Type": "application/json" } }
       );
 
+      console.log('✅ Google registration successful:', response.data);
       const { access_token, user } = response.data;
       await login(user, access_token);
       
       // Reset state
       setShowCountrySelection(false);
       setGoogleAuthData(null);
-    } catch (error) {
-      console.error('Google registration error:', error);
-      Alert.alert('Error', 'Failed to complete registration');
+    } catch (error: any) {
+      console.error('❌ Google registration error:', error);
+      console.error('📊 Error response:', error.response?.data);
+      Alert.alert('Error', `Failed to complete registration: ${error.response?.data?.detail || error.message}`);
     }
   };
 
+  const resetForm = () => {
+    setEmail("");
+    setPassword("");
+    setFullName("");
+    setCountry("UK");
+    setCurrency("GBP");
+  };
+
+  const toggleMode = () => {
+    setIsRegistering(!isRegistering);
+    resetForm();
+  };
+
+  // Render
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.container}
     >
       <Text style={styles.title}>
-        {isRegistering ? "Crear cuenta" : "Login"}
+        {isRegistering ? "Create Account" : "Sign In"}
       </Text>
-       <Text style={styles.buttonText }>
-        Url API ${API_URL}
-      </Text>     
 
       {isRegistering && (
         <>
@@ -234,38 +380,12 @@ export default function LoginScreen() {
             onChangeText={setFullName}
           />
           
-          {/* Country Selection */}
-          <View style={styles.pickerContainer}>
-            <Text style={styles.pickerLabel}>Country:</Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              style={styles.countryScroll}
-            >
-              {COUNTRIES.map((countryOption) => (
-                <TouchableOpacity
-                  key={countryOption.code}
-                  style={[
-                    styles.countryChip,
-                    country === countryOption.code && styles.selectedChip
-                  ]}
-                  onPress={() => {
-                    setCountry(countryOption.code);
-                    setCurrency(countryOption.currency);
-                  }}
-                >
-                  <Text style={[
-                    styles.countryChipText,
-                    country === countryOption.code && styles.selectedChipText
-                  ]}>
-                    {countryOption.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+          <CountrySelector
+            countries={COUNTRIES}
+            selectedCountry={country}
+            onSelectCountry={handleSelectCountry}
+          />
           
-          {/* Currency Display */}
           <View style={styles.currencyContainer}>
             <Text style={styles.currencyLabel}>Currency: {currency}</Text>
           </View>
@@ -274,7 +394,7 @@ export default function LoginScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="Emal"
+        placeholder="Email"
         placeholderTextColor="#999"
         value={email}
         onChangeText={setEmail}
@@ -285,7 +405,7 @@ export default function LoginScreen() {
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="Contraseña"
+          placeholder="Password"
           placeholderTextColor="#999"
           value={password}
           onChangeText={setPassword}
@@ -305,7 +425,7 @@ export default function LoginScreen() {
         onPress={isRegistering ? handleRegister : handleLogin}
       >
         <Text style={styles.buttonText}>
-          {isRegistering ? "Registrarse" : "Entrar"}
+          {isRegistering ? "Sign Up" : "Sign In"}
         </Text>
       </TouchableOpacity>
 
@@ -322,20 +442,30 @@ export default function LoginScreen() {
         </>
       )}
 
-      <TouchableOpacity
-        onPress={() => setIsRegistering(!isRegistering)}
-        style={styles.switch}
-      >
+      <TouchableOpacity onPress={toggleMode} style={styles.switch}>
         <Text style={styles.switchText}>
           {isRegistering
-            ? "¿Ya tienes cuenta? Inicia sesión"
-            : "¿No tienes cuenta? Regístrate"}
+            ? "Already have an account? Sign In"
+            : "Don't have an account? Sign Up"}
         </Text>
       </TouchableOpacity>
+
+      <CountrySelectionModal
+        visible={showCountrySelection}
+        googleAuthData={googleAuthData}
+        selectedCountry={country}
+        onSelectCountry={handleSelectCountry}
+        onConfirm={completeGoogleRegistration}
+        onCancel={() => {
+          setShowCountrySelection(false);
+          setGoogleAuthData(null);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -378,67 +508,68 @@ const styles = StyleSheet.create({
   },
   switchText: {
     color: "#4a90e2",
-    fontSize: 15,
+    fontSize: 14,
   },
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#ddd",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingRight: 15,
     marginBottom: 15,
   },
   passwordInput: {
     flex: 1,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
     fontSize: 16,
   },
   pickerContainer: {
     marginBottom: 15,
   },
   pickerLabel: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 14,
+    color: "#666",
     marginBottom: 8,
-    color: "#333",
+    fontWeight: "500",
   },
   countryScroll: {
-    maxHeight: 60,
+    flexGrow: 0,
   },
   countryChip: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#f0f0f0",
     marginRight: 8,
-    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
   selectedChip: {
-    backgroundColor: "#4a90e2",
+    backgroundColor: "#e3f2fd",
     borderColor: "#4a90e2",
   },
   countryChipText: {
     fontSize: 14,
-    color: "#333",
+    color: "#666",
   },
   selectedChipText: {
-    color: "#fff",
+    color: "#4a90e2",
     fontWeight: "600",
   },
   currencyContainer: {
-    backgroundColor: "#f0f4ff",
-    padding: 12,
-    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: "#f0f0f0",
+    borderRadius: 10,
     marginBottom: 15,
   },
   currencyLabel: {
     fontSize: 14,
-    color: "#4a90e2",
-    fontWeight: "600",
+    color: "#666",
+    fontWeight: "500",
   },
   googleButton: {
     backgroundColor: "#fff",
@@ -462,5 +593,100 @@ const styles = StyleSheet.create({
     color: "#666",
     fontSize: 14,
     marginVertical: 10,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+    color: '#333',
+  },
+  modalSubtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#666',
+    marginBottom: 20,
+  },
+  countryList: {
+    maxHeight: 300,
+    marginBottom: 20,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginBottom: 8,
+    backgroundColor: '#f7f7f7',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  selectedCountryItem: {
+    backgroundColor: '#e3f2fd',
+    borderColor: '#4a90e2',
+  },
+  countryItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedCountryItemText: {
+    fontWeight: '600',
+    color: '#4a90e2',
+  },
+  currencyText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f0f0f0',
+  },
+  confirmButton: {
+    backgroundColor: '#4a90e2',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
   },
 });

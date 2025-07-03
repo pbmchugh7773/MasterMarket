@@ -40,22 +40,18 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         print(f"✅ Token decodificado: {payload}")
-        user_id_str: str = payload.get("sub")
-        if user_id_str is None:
+        user_email: str = payload.get("sub")
+        if user_email is None:
             print("❌ No se encontró 'sub' en el payload")
             raise credentials_exception
-        user_id = int(user_id_str)
-        print(f"📍 User ID extraído: {user_id}")
+        print(f"📍 User email extraído: {user_email}")
     except JWTError as e:
         print(f"❌ Error JWT: {e}")
         raise credentials_exception
-    except ValueError as e:
-        print(f"❌ Error de valor: {e}")
-        raise credentials_exception
 
-    user = crud.get_user_by_id(db, user_id=user_id)
+    user = crud.get_user_by_email(db, email=user_email)
     if user is None:
-        print(f"❌ Usuario con ID {user_id} no encontrado en la BD")
+        print(f"❌ Usuario con email {user_email} no encontrado en la BD")
         raise credentials_exception
     print(f"✅ Usuario autenticado: {user.email}")
     return user

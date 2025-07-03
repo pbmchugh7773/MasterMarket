@@ -33,9 +33,13 @@ async def google_oauth_login(request_data: dict, db: Session = Depends(get_db)):
     Authenticate user with Google OAuth token
     """
     try:
+        print(f"🔄 Google auth request received: {request_data}")
+        
         google_token = request_data.get("google_token")
         country = request_data.get("country")  # No default - let frontend handle it
         currency = request_data.get("currency")  # No default - let frontend handle it
+        
+        print(f"📝 Extracted data - token: {google_token[:20] if google_token else None}..., country: {country}, currency: {currency}")
         
         if not google_token:
             raise HTTPException(status_code=400, detail="Google token is required")
@@ -53,8 +57,10 @@ async def google_oauth_login(request_data: dict, db: Session = Depends(get_db)):
         ).first()
         
         if existing_user:
+            print(f"✅ Found existing user: {existing_user.email}")
             # Update existing user with Google info if needed
             if not existing_user.google_id:
+                print("🔄 Updating existing user with Google info")
                 existing_user.google_id = google_user_info["sub"]
                 existing_user.provider = "google"
                 existing_user.avatar_url = google_user_info.get("picture")
@@ -66,17 +72,25 @@ async def google_oauth_login(request_data: dict, db: Session = Depends(get_db)):
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
-                "user": existing_user
+                "user": UserOut.from_orm(existing_user)
             }
         else:
+            print(f"🆕 New user detected: {google_user_info.get('email')}")
             # For new users, country and currency are required
             if not country or not currency:
+                print(f"❌ Missing required fields - country: {country}, currency: {currency}")
                 raise HTTPException(
                     status_code=400, 
                     detail="Country and currency are required for new users"
                 )
             
             # Create new user from Google info
+            print(f"📝 Creating new user with data:")
+            print(f"   - email: {google_user_info['email']}")
+            print(f"   - name: {google_user_info.get('name', '')}")
+            print(f"   - country: {country}")
+            print(f"   - currency: {currency}")
+            
             new_user_data = GoogleOAuthCreate(
                 email=google_user_info["email"],
                 full_name=google_user_info.get("name", ""),
@@ -97,16 +111,18 @@ async def google_oauth_login(request_data: dict, db: Session = Depends(get_db)):
                 is_active=True
             )
             
+            print("💾 Saving new user to database...")
             db.add(new_user)
             db.commit()
             db.refresh(new_user)
+            print(f"✅ User created successfully with ID: {new_user.id}")
             
             # Generate JWT token
             access_token = create_access_token(data={"sub": new_user.email})
             return {
                 "access_token": access_token,
                 "token_type": "bearer",
-                "user": new_user
+                "user": UserOut.from_orm(new_user)
             }
             
     except Exception as e:
@@ -114,30 +130,31 @@ async def google_oauth_login(request_data: dict, db: Session = Depends(get_db)):
 
 async def verify_google_token(token: str):
     """
-    Verify Google OAuth token and return user info
+    Verify Google OAuth ID token and return user info
     """
     try:
-        # Verify token with Google
+        # Verify ID token with Google
         response = requests.get(
-            f"https://oauth2.googleapis.com/tokeninfo?access_token={token}",
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={token}",
             timeout=10
         )
         
         if response.status_code != 200:
+            print(f"Token verification failed: {response.status_code} - {response.text}")
             return None
             
         token_info = response.json()
         
-        # Get user info
-        user_response = requests.get(
-            f"https://www.googleapis.com/oauth2/v2/userinfo?access_token={token}",
-            timeout=10
-        )
+        # Extract user info from ID token
+        user_info = {
+            "sub": token_info.get("sub"),  # Google user ID
+            "email": token_info.get("email"),
+            "name": token_info.get("name"),
+            "picture": token_info.get("picture"),
+            "email_verified": token_info.get("email_verified")
+        }
         
-        if user_response.status_code != 200:
-            return None
-            
-        return user_response.json()
+        return user_info
         
     except Exception as e:
         print(f"Error verifying Google token: {e}")

@@ -95,6 +95,7 @@ export const registerUser = async (userData: {
   full_name?: string;
   location?: string;
   country?: string;
+  currency?: string;
 }) => {
   const url = `${API_URL}/auth/register`;
   console.log('🔄 Attempting registration at:', url);

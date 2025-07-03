@@ -54,10 +54,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = async () => {
-    await AsyncStorage.removeItem('user');
-    await AsyncStorage.removeItem('token');
-    setUser(null);
-    router.replace('/login');
+    try {
+      console.log('🚪 Logging out...');
+      
+      // Clear AsyncStorage
+      await AsyncStorage.removeItem('user');
+      await AsyncStorage.removeItem('token');
+      console.log('🗑️ AsyncStorage cleared');
+      
+      // Clear Google Sign-In if available
+      try {
+        const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+        if (await GoogleSignin.isSignedIn()) {
+          await GoogleSignin.signOut();
+          console.log('🔓 Google Sign-In session cleared');
+        }
+      } catch (error) {
+        console.log('⚠️ Google Sign-In not available or already signed out');
+      }
+      
+      setUser(null);
+      router.replace('/login');
+      console.log('✅ Logout completed');
+    } catch (error) {
+      console.error('❌ Error during logout:', error);
+    }
   };
 
   return (

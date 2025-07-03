@@ -2,6 +2,10 @@
 # Dockerfile para FastAPI
 FROM python:3.11-slim
 
+# Configurar Python para no generar archivos de caché
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 # Crear directorio de trabajo
 WORKDIR /app
 
