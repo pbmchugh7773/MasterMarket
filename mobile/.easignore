@@ -17,8 +17,8 @@ web-build/
 android/app/build/
 
 # 📱 Directorios nativos (si no haces prebuild)
-android/
-ios/
+/android
+/ios
 
 # 🐍 Entornos virtuales de Python (por si copiaste algo de backend)
 .venv/

@@ -35,3 +35,6 @@ starlette==0.46.1
 typing-extensions==4.12.2
 urllib3==2.4.0
 uvicorn==0.34.0
+requests==2.32.3
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1

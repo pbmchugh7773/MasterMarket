@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,10 +8,13 @@ import {
   Alert,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { useBasket } from "../../context/BasketContext";
+import { useAuth } from "../../context/AuthContext";
 import { FontAwesome } from "@expo/vector-icons";
 import { API_URL } from "../../config";
+import { router } from 'expo-router';
 const BAR_MAX_WIDTH = Dimensions.get("window").width - 120;
 const COLORS = {
   primary: "#5A31F4",
@@ -40,6 +44,7 @@ type BasketItem = {
 };
 
 const BasketScreen = () => {
+  const { user, loading: authLoading } = useAuth();
   const {
     basket,
     removeFromBasket,
@@ -47,6 +52,29 @@ const BasketScreen = () => {
     clearBasket,
     refreshPrices,
   } = useBasket();
+
+  // Check authentication and redirect if needed
+  useEffect(() => {
+    if (!authLoading && !user) {
+      console.log('🔒 No user found, redirecting to login...');
+      router.replace('/login');
+    }
+  }, [authLoading, user]);
+
+  // Show loading screen while checking auth
+  if (authLoading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#5A31F4" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
+
+  // If user is null after loading, it will redirect in useEffect
+  if (!user) {
+    return null;
+  }
 
   const getBarWidth = (value: number, max: number) =>
     (value / max) * BAR_MAX_WIDTH;
@@ -479,6 +507,16 @@ const styles = StyleSheet.create({
     fontSize: 15, 
     color: COLORS.text,
     fontWeight: "500",
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
 });
 

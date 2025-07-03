@@ -45,8 +45,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const login = async (userData: User, token: string) => {
+    console.log('🔐 Saving token to AsyncStorage:', token ? 'Token received' : 'No token');
     await AsyncStorage.setItem('user', JSON.stringify(userData));
     await AsyncStorage.setItem('token', token);
+    console.log('✅ Token saved successfully');
     setUser(userData);
     router.replace('/');
   };

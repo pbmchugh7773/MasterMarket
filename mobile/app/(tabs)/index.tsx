@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,30 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Modal,
+  ActivityIndicator,
+  RefreshControl,
+  
 } from 'react-native';
-import { fetchProducts } from '../../services/api';
-
-import { fetchPricesByProduct } from '../../services/api';
-import { fetchPricesByProductGeneric } from '../../services/api';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { fetchProducts, submitCommunityPrice, searchProductByBarcode, getProductCommunityPrices, voteCommunityPrice, extractPriceFromPhoto, getTrendingPrices, getProductRecentPrices, debugCheckToken, getPopularStores, getNearbyStores } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { useBasket } from '../../context/BasketContext';
-import { API_URL } from "../../config";
+
+import { router } from 'expo-router';
+
+// Import camera modules conditionally to avoid Expo Go issues
+let Camera: any = null;
+let ImagePicker: any = null;
+let Location: any = null;
+
+try {
+  Camera = require('expo-camera').Camera;
+  ImagePicker = require('expo-image-picker');
+  Location = require('expo-location');
+} catch (error) {
+  console.warn('Camera/Location modules not available in Expo Go. Some features will be disabled.');
+}
 
 type Product = {
   id: number;
@@ -23,205 +40,677 @@ type Product = {
   quantity: number;
   image_url: string;
   category: string;
+  barcode?: string;
+};
+
+type CommunityPrice = {
+  id: number;
+  product_id: number;
+  store_name: string;
+  store_location: string;
+  price: number;
+  price_photo_url?: string;
+  currency: string;
+  upvotes: number;
+  downvotes: number;
+  verification_status: string;
+  created_at: string;
+  user_vote?: 'upvote' | 'downvote' | null;
+  submitted_by?: {
+    full_name?: string;
+    email: string;
+  };
+};
+
+type CommunityPriceWithChange = CommunityPrice & {
+  price_change_percentage?: number;
+  previous_price?: number;
+};
+
+type TrendingPriceWithProduct = CommunityPrice & {
+  product_name: string;
+  product_image_url?: string;
 };
 
 const categories = [
-  { name: 'All', icon: require('../../assets/icons/all.png') },
-  { name: 'Fresh Food', icon: require('../../assets/icons/fresh_food.png') },
-  { name: 'Bakery', icon: require('../../assets/icons/bakery.png') },
-  { name: 'Treats & Snacks', icon: require('../../assets/icons/snacks.png') },
-  { name: 'Food Cupboard', icon: require('../../assets/icons/food_cupboard.png') },
-  { name: 'Frozen Food', icon: require('../../assets/icons/frozen_food.png') },
-  { name: 'Drinks', icon: require('../../assets/icons/drinks.png') },
-  { name: 'Baby', icon: require('../../assets/icons/baby.png') },
-  { name: 'Health & Beauty', icon: require('../../assets/icons/health_beauty.png') },
-  { name: 'Pets', icon: require('../../assets/icons/pets.png') },
-  { name: 'Household', icon: require('../../assets/icons/household.png') },
-  { name: 'Home & Living', icon: require('../../assets/icons/home_living.png') },
-  { name: 'Inspiration & Events', icon: require('../../assets/icons/events.png') },
+  { name: 'All', icon: '🛒' },
+  { name: 'Fresh Food', icon: '🥬' },
+  { name: 'Bakery', icon: '🍞' },
+  { name: 'Treats & Snacks', icon: '🍿' },
+  { name: 'Food Cupboard', icon: '🥫' },
+  { name: 'Frozen Food', icon: '🧊' },
+  { name: 'Drinks', icon: '🥤' },
+  { name: 'Baby', icon: '🍼' },
+  { name: 'Health & Beauty', icon: '💄' },
+  { name: 'Pets', icon: '🐕' },
+  { name: 'Household', icon: '🧹' },
+  { name: 'Home & Living', icon: '🏠' },
 ];
 
 const PRODUCTS_PER_PAGE = 10;
 
-const getImageUrl = (imagePath: string) => {
-  return `${imagePath}`;
-};
-
-
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
-  const { addToBasket: addToGlobalBasket } = useBasket();
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
-
+  const [showPriceUpdate, setShowPriceUpdate] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [newPrice, setNewPrice] = useState('');
+  const [storeName, setStoreName] = useState('');
+  const [storeLocation, setStoreLocation] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [showProductPrices, setShowProductPrices] = useState(false);
+  const [showProductSearch, setShowProductSearch] = useState(false);
+  const [productSearchText, setProductSearchText] = useState('');
+  const [debouncedProductSearchText, setDebouncedProductSearchText] = useState('');
+  const productSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [communityPrices, setCommunityPrices] = useState<CommunityPrice[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [recentPrices, setRecentPrices] = useState<TrendingPriceWithProduct[]>([]);
+  const [loadingRecentPrices, setLoadingRecentPrices] = useState(false);
+  const [productPrices, setProductPrices] = useState<{[key: number]: CommunityPriceWithChange[]}>({});
+  const [popularStores, setPopularStores] = useState<{store_name: string, store_location: string, submission_count: number}[]>([]);
+  const [nearbyStores, setNearbyStores] = useState<any[]>([]);
+  const [showStoreSelection, setShowStoreSelection] = useState(false);
+  const [loadingStores, setLoadingStores] = useState(false);
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
   
-  // Obtener productos al inicio
+  const { user, loading: authLoading } = useAuth();
+  const { addToBasket: addToGlobalBasket } = useBasket();
+
+  // Check authentication and redirect if needed
   useEffect(() => {
-    console.log("Fetching products...");
-    fetchProducts()
-      .then((data) => {
-        console.log("Products loaded:", data.length);
-        setProducts(data);
-      })
-      .catch((err) => console.error('Error fetching products:', err));
+    if (!authLoading && !user) {
+      console.log('🔒 No user found, redirecting to login...');
+      router.replace('/login');
+    }
+  }, [authLoading, user]);
+
+  // Get camera permissions
+  useEffect(() => {
+    (async () => {
+      if (Camera) {
+        try {
+          const { status } = await Camera.requestCameraPermissionsAsync();
+          setHasPermission(status === 'granted');
+        } catch (error) {
+          console.warn('Camera permissions not available:', error);
+          setHasPermission(false);
+        }
+      } else {
+        setHasPermission(false);
+      }
+    })();
   }, []);
 
-  // Esta función maneja la lógica de filtrado
-  const updateFilteredProducts = () => {
-    console.log("Filtering products. Search:", searchText, "Category:", selectedCategory);
-    console.log("Total products:", products.length);
-  
-    if (products.length === 0) {
-      setFilteredProducts([]);
-      return;
+  // Fetch products and recent prices
+  useEffect(() => {
+    fetchProductsData();
+    fetchRecentPrices();
+  }, []);
+
+  const fetchProductsData = async () => {
+    try {
+      const data = await fetchProducts();
+      setProducts(data);
+      // Load recent prices for each product
+      fetchProductPrices(data);
+    } catch (err) {
+      console.error('Error fetching products:', err);
     }
-  
+  };
+
+  // Fetch recent prices for products
+  const fetchProductPrices = async (productsData: Product[]) => {
+    try {
+      console.log('🔄 Fetching prices for', productsData.length, 'products');
+      const pricesPromises = productsData.slice(0, 20).map(async (product) => { // Limit to first 20 products for performance
+        try {
+          console.log(`📊 Fetching prices for product: ${product.name} (ID: ${product.id})`);
+          const prices = await getProductRecentPrices(product.id, 3);
+          console.log(`✅ Found ${prices.length} prices for ${product.name}`);
+          return { productId: product.id, prices };
+        } catch (error) {
+          console.error(`❌ Error fetching prices for product ${product.id} (${product.name}):`, error);
+          return { productId: product.id, prices: [] };
+        }
+      });
+      
+      const results = await Promise.all(pricesPromises);
+      const pricesMap: {[key: number]: CommunityPriceWithChange[]} = {};
+      
+      results.forEach(({ productId, prices }) => {
+        const product = productsData.find(p => p.id === productId);
+        const productName = product ? product.name : `Unknown (${productId})`;
+        
+        if (prices.length > 0) {
+          pricesMap[productId] = prices;
+          console.log(`📦 Added ${prices.length} prices for product ${productId} (${productName})`);
+        } else {
+          console.log(`📦 No prices found for product ${productId} (${productName})`);
+        }
+      });
+      
+      console.log('🎯 Final prices map:', Object.keys(pricesMap).length, 'products with prices');
+      setProductPrices(prevPrices => ({
+        ...prevPrices,
+        ...pricesMap
+      }));
+    } catch (error) {
+      console.error('Error fetching product prices:', error);
+    }
+  };
+
+  // Fetch recent prices for display on home screen
+  const fetchRecentPrices = async () => {
+    setLoadingRecentPrices(true);
+    try {
+      const data = await getTrendingPrices();
+      setRecentPrices(data.slice(0, 6)); // Show only top 6 recent prices
+    } catch (error) {
+      console.error('Failed to fetch recent prices:', error);
+    }
+    setLoadingRecentPrices(false);
+  };
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchProductsData();
+    await fetchRecentPrices();
+    setRefreshing(false);
+  }, []);
+
+  // Debounced search state
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce search text
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearchText(searchText);
+    }, 300); // 300ms debounce
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchText]);
+
+  // Optimized filter products with memoization
+  const filteredProducts = useMemo(() => {
     let filtered = [...products];
-  
-    // ✅ Mostrar todo si está seleccionada "All"
+
     if (selectedCategory && selectedCategory !== "All") {
       filtered = filtered.filter(
-        (product) => 
-          (product.category).trim().toLowerCase() === selectedCategory.trim().toLowerCase()
+        (product) => product.category.trim().toLowerCase() === selectedCategory.trim().toLowerCase()
       );
     }
-  
-    // Filtrar por texto de búsqueda si hay texto
-    if (searchText.trim() !== '') {
-      filtered = filtered.filter((product) =>
-        product.name.toLowerCase().includes(searchText.toLowerCase())
-      );
-    }
-  
-    setFilteredProducts(filtered);
-    setCurrentPage(1); // Resetear a la primera página cuando cambian los filtros
-  };
-  
 
-  // Actualizar productos mostrados basado en la paginación
-  const updateDisplayedProducts = () => {
+    if (debouncedSearchText.trim() !== '') {
+      const searchLower = debouncedSearchText.toLowerCase();
+      filtered = filtered.filter((product) => {
+        return product.name.toLowerCase().includes(searchLower) ||
+               product.description.toLowerCase().includes(searchLower) ||
+               (product.barcode && product.barcode.includes(debouncedSearchText));
+      });
+    }
+
+    return filtered;
+  }, [products, selectedCategory, debouncedSearchText]);
+
+  // Reset current page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filteredProducts]);
+
+  // Memoized displayed products
+  const displayedProducts = useMemo(() => {
     const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
     const endIndex = startIndex + PRODUCTS_PER_PAGE;
-    const productsToShow = filteredProducts.slice(startIndex, endIndex);
-    setDisplayedProducts(productsToShow);
-  };
+    const products = filteredProducts.slice(startIndex, endIndex);
+    console.log(`📄 Page ${currentPage}: Displaying ${products.length} products`, products.map(p => `${p.name} (ID: ${p.id})`));
+    
+    // Load prices for currently displayed products if not already loaded
+    products.forEach(product => {
+      if (!productPrices[product.id]) {
+        console.log(`⚠️ No prices loaded for ${product.name} (ID: ${product.id})`);
+      } else {
+        console.log(`✅ Prices available for ${product.name}: ${productPrices[product.id].length} prices`);
+      }
+    });
+    
+    return products;
+  }, [filteredProducts, currentPage, productPrices]);
 
-  // Actualizamos el filtrado cada vez que cambian las dependencias
+  // Load prices for currently displayed products when page changes
   useEffect(() => {
-    updateFilteredProducts();
-  }, [searchText, selectedCategory, products]);
-
-  // Actualizamos los productos mostrados cuando cambian los filtros o la página
-  useEffect(() => {
-    updateDisplayedProducts();
-  }, [filteredProducts, currentPage]);
-
-  const handleSearch = (text: string) => {
-    console.log("Search text changed:", text);
-    setSearchText(text);
-  };
-
-  const handleCategorySelect = (category: string) => {
-    console.log("Category selected:", category);
-    // Si la categoría ya está seleccionada, la deseleccionamos
-    if (selectedCategory === category) {
-      setSelectedCategory("All");
-    } else {
-      setSelectedCategory(category);
+    const loadPricesForCurrentPage = async () => {
+      const productsNeedingPrices = displayedProducts.filter(product => !productPrices[product.id]);
+      
+      if (productsNeedingPrices.length > 0) {
+        console.log(`🔄 Loading prices for ${productsNeedingPrices.length} products on current page:`, 
+          productsNeedingPrices.map(p => `${p.name} (${p.id})`));
+        await fetchProductPrices(productsNeedingPrices);
+      } else {
+        console.log('✅ All products on current page already have prices loaded');
+      }
+    };
+    
+    if (displayedProducts.length > 0) {
+      loadPricesForCurrentPage();
     }
-  };
+  }, [displayedProducts.map(p => p.id).join(','), Object.keys(productPrices).join(',')]);
 
-  const addToBasket = async (product: Product) => {
+  // Handle barcode scan
+  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+    setShowScanner(false);
+    setLoading(true);
+    
     try {
-      const summary = await fetchPricesByProductGeneric(product.id);
-
-      const basketItem = {
-        id: summary.id,
-        name: summary.name,
-        image_url: summary.image_url,
-        quantity: 1,
-        // Ajuste aquí:
-        prices: summary.products.map((p: any) => ({
-          supermarket: p.supermarket,
-          price: p.last_price,
-          updated_at: p.updated_at, // Solo si el backend lo envía; si no, puedes quitarlo
-        })),
-      };
-      console.log("Contenido de basketItem:", JSON.stringify(basketItem, null, 2));
-
-      addToGlobalBasket(basketItem); // usamos el del contexto
-      Alert.alert('Added to basket', `${summary.name} has been added.`);
+      const result = await searchProductByBarcode(data);
+      if (result.found && result.product) {
+        setSelectedProduct(result.product);
+        Alert.alert('Product Found', `${result.product.name}`);
+      } else {
+        Alert.alert('Not Found', 'Product not in database. You can add it manually.');
+      }
     } catch (error) {
-      console.error('Error fetching prices:', error);
-      Alert.alert('Error', 'Could not fetch prices for this product.');
+      Alert.alert('Error', 'Failed to search product');
+    }
+    
+    setLoading(false);
+  };
+
+  // Handle barcode scanner button press
+  const handleBarcodeScanner = () => {
+    if (!BarCodeScanner) {
+      Alert.alert(
+        'Camera Not Available',
+        'Barcode scanning is not available in Expo Go. Please use a development build or manual search.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    setShowScanner(true);
+  };
+
+  // Debounce product search text
+  useEffect(() => {
+    if (productSearchTimeoutRef.current) {
+      clearTimeout(productSearchTimeoutRef.current);
+    }
+    
+    productSearchTimeoutRef.current = setTimeout(() => {
+      setDebouncedProductSearchText(productSearchText);
+    }, 300);
+
+    return () => {
+      if (productSearchTimeoutRef.current) {
+        clearTimeout(productSearchTimeoutRef.current);
+      }
+    };
+  }, [productSearchText]);
+
+  // Memoized filtered search products
+  const filteredSearchProducts = useMemo(() => {
+    if (debouncedProductSearchText.trim() === '') {
+      return products;
+    }
+    
+    const searchLower = debouncedProductSearchText.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(searchLower) ||
+      product.category.toLowerCase().includes(searchLower) ||
+      (product.barcode && product.barcode.includes(debouncedProductSearchText))
+    );
+  }, [products, debouncedProductSearchText]);
+
+  // Handle manual product search
+  const handleManualSearch = () => {
+    setProductSearchText('');
+    setShowProductSearch(true);
+  };
+
+  // Select product from search
+  const selectProductFromSearch = (product: Product) => {
+    setSelectedProduct(product);
+    setShowProductSearch(false);
+    setProductSearchText('');
+    Alert.alert('Product Selected', `Selected: ${product.name}`);
+  };
+
+  // Get user location and nearby stores
+  const loadNearbyStores = async () => {
+    if (!Location) {
+      console.log('Location services not available');
+      return;
+    }
+    
+    setLoadingStores(true);
+    try {
+      // Request location permission
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('Location permission denied');
+        return;
+      }
+      
+      // Get current location
+      let location = await Location.getCurrentPositionAsync({});
+      setUserLocation({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      });
+      
+      // Get nearby stores
+      const stores = await getNearbyStores(
+        location.coords.latitude,
+        location.coords.longitude,
+        5000 // 5km radius
+      );
+      setNearbyStores(stores);
+    } catch (error) {
+      console.error('Failed to get location/stores:', error);
+    }
+    setLoadingStores(false);
+  };
+
+  // Quick update price - pre-select product and open modal
+  const quickUpdatePrice = async (product: Product) => {
+    setSelectedProduct(product);
+    setNewPrice('');
+    setStoreName('');
+    setStoreLocation('');
+    setShowPriceUpdate(true);
+    
+    // Load stores
+    setLoadingStores(true);
+    try {
+      // Load popular stores
+      const popularStoresData = await getPopularStores();
+      setPopularStores(popularStoresData);
+      
+      // Try to load nearby stores
+      await loadNearbyStores();
+    } catch (error) {
+      console.error('Failed to load stores:', error);
+    }
+    setLoadingStores(false);
+  };
+
+
+  // Handle price photo capture
+  const handlePricePhoto = async () => {
+    if (!ImagePicker) {
+      Alert.alert(
+        'Camera Not Available',
+        'Photo capture is not available in Expo Go. Please enter price manually.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setLoading(true);
+        try {
+          // Create form data for upload
+          const formData = new FormData();
+          const photo = result.assets[0];
+          
+          // @ts-ignore
+          formData.append('file', {
+            uri: photo.uri,
+            type: 'image/jpeg',
+            name: 'price_photo.jpg',
+          });
+
+          const extractResult = await extractPriceFromPhoto(formData);
+          
+          if (extractResult.success) {
+            if (extractResult.extracted_price) {
+              setNewPrice(extractResult.extracted_price.toString());
+              Alert.alert('Success', extractResult.message);
+            } else {
+              Alert.alert('Info', 'Could not extract price. Please enter manually.');
+            }
+          }
+        } catch (error) {
+          Alert.alert('Error', 'Failed to upload photo');
+        }
+        setLoading(false);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Camera not available');
     }
   };
 
-  // Calcular información de paginación
+  // Submit price
+  const submitPrice = async () => {
+    if (!selectedProduct || !newPrice || !storeName || !storeLocation) {
+      Alert.alert('Error', 'Please complete all fields');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'Please login to submit prices');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await submitCommunityPrice({
+        product_id: selectedProduct.id,
+        store_name: storeName,
+        store_location: storeLocation,
+        price: parseFloat(newPrice),
+        currency: 'GBP',
+      });
+
+      Alert.alert('Success', 'Price submitted successfully!');
+      resetPriceForm();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to submit price');
+    }
+    setLoading(false);
+  };
+
+  const resetPriceForm = () => {
+    setShowPriceUpdate(false);
+    setSelectedProduct(null);
+    setNewPrice('');
+    setStoreName('');
+    setStoreLocation('');
+  };
+
+  // View product prices
+  const viewProductPrices = async (product: Product) => {
+    setSelectedProduct(product);
+    setLoading(true);
+    
+    try {
+      const prices = await getProductCommunityPrices(product.id, user?.location);
+      setCommunityPrices(prices);
+      setShowProductPrices(true);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load prices');
+    }
+    
+    setLoading(false);
+  };
+
+  // Vote on price
+  const handleVote = async (priceId: number, voteType: 'upvote' | 'downvote') => {
+    if (!user) {
+      Alert.alert('Error', 'Please login to vote');
+      return;
+    }
+
+    try {
+      console.log(`🗳️ Voting ${voteType} on price ${priceId}`);
+      const result = await voteCommunityPrice(priceId, voteType);
+      console.log(`✅ Vote result:`, result);
+      
+      // Update communityPrices state (for modal)
+      setCommunityPrices(prices => 
+        prices.map(p => 
+          p.id === priceId 
+            ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, user_vote: voteType }
+            : p
+        )
+      );
+      
+      // Update productPrices state (for main screen)
+      setProductPrices(prevProductPrices => {
+        const updatedProductPrices = { ...prevProductPrices };
+        
+        // Find and update the price in the productPrices map
+        Object.keys(updatedProductPrices).forEach(productId => {
+          updatedProductPrices[parseInt(productId)] = updatedProductPrices[parseInt(productId)].map(p => 
+            p.id === priceId 
+              ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, user_vote: voteType }
+              : p
+          );
+        });
+        
+        console.log(`🔄 Updated productPrices for price ${priceId}`);
+        return updatedProductPrices;
+      });
+      
+      // Update recentPrices state (for Recent Prices section)
+      setRecentPrices(prices => 
+        prices.map(p => 
+          p.id === priceId 
+            ? { ...p, upvotes: result.upvotes, downvotes: result.downvotes, user_vote: voteType }
+            : p
+        )
+      );
+      
+    } catch (error) {
+      console.error('❌ Vote failed:', error);
+      Alert.alert('Error', 'Failed to vote');
+    }
+  };
+
+  const getPriceTrend = (price: CommunityPrice) => {
+    const totalVotes = price.upvotes + price.downvotes;
+    const approvalRate = totalVotes > 0 ? (price.upvotes / totalVotes) * 100 : 0;
+    
+    return {
+      approvalRate: approvalRate.toFixed(0),
+      isVerified: price.verification_status === 'verified',
+      isDisputed: price.verification_status === 'disputed',
+    };
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'just now';
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    if (diffInHours < 48) return 'yesterday';
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+    
+    return date.toLocaleDateString('en-GB', { 
+      day: 'numeric', 
+      month: 'short'
+    });
+  };
+
+  // Pagination
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE);
   const hasNextPage = currentPage < totalPages;
   const hasPrevPage = currentPage > 1;
 
-  const goToNextPage = () => {
-    if (hasNextPage) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
+  // Show loading screen while checking auth
+  if (authLoading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#5A31F4" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </View>
+    );
+  }
 
-  const goToPrevPage = () => {
-    if (hasPrevPage) {
-      setCurrentPage(currentPage - 1);
-    }
-  };
-
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
-  };
-
-  // Generar números de página para mostrar
-  const getPageNumbers = () => {
-    const pages = [];
-    const maxPagesToShow = 5;
-    
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
-    } else {
-      const startPage = Math.max(1, currentPage - 2);
-      const endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
-      
-      for (let i = startPage; i <= endPage; i++) {
-        pages.push(i);
-      }
-    }
-    
-    return pages;
-  };
+  // If user is null after loading, it will redirect in useEffect
+  if (!user) {
+    return null;
+  }
 
   return (
     <ScrollView 
       style={styles.container}
-      contentContainerStyle={{ paddingBottom: 10 }}
+      contentContainerStyle={{ paddingBottom: 100 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      
       <Text style={styles.title}>MasterMarket</Text>
+      <Text style={styles.subtitle}>Community Price Tracker</Text>
+
+      {/* Debug Button - Temporary */}
+      <TouchableOpacity 
+        style={[styles.updatePriceButton, { backgroundColor: '#FF6B6B', marginBottom: 10 }]}
+        onPress={async () => {
+          const tokenInfo = await debugCheckToken();
+          Alert.alert('Token Debug Info', `Token: ${tokenInfo?.token ? 'Exists' : 'Missing'}\nUser: ${tokenInfo?.user ? tokenInfo.user.email : 'No user'}`);
+        }}
+      >
+        <Text style={styles.updatePriceButtonText}>Debug: Check Token</Text>
+      </TouchableOpacity>
+
+      {/* Update Price Button */}
+      <TouchableOpacity 
+        style={styles.updatePriceButton}
+        onPress={async () => {
+          setShowPriceUpdate(true);
+          setLoadingStores(true);
+          try {
+            // Load popular stores
+            const popularStoresData = await getPopularStores();
+            setPopularStores(popularStoresData);
+            
+            // Try to load nearby stores
+            await loadNearbyStores();
+          } catch (error) {
+            console.error('Failed to load stores:', error);
+          }
+          setLoadingStores(false);
+        }}
+      >
+        <MaterialCommunityIcons name="tag" size={20} color="white" />
+        <Text style={styles.updatePriceButtonText}>Update Price</Text>
+      </TouchableOpacity>
 
       <TextInput
         style={styles.searchInput}
         placeholder="Search product: e.g. milk, bread..."
         value={searchText}
-        onChangeText={handleSearch}
+        onChangeText={setSearchText}
       />
 
       <Text style={styles.sectionTitle}>Browse by Category</Text>
       
-      {/* Categorías en una fila horizontal con scroll */}
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -234,9 +723,9 @@ export default function HomeScreen() {
               styles.categoryItem,
               selectedCategory === category.name && styles.selectedCategory
             ]}
-            onPress={() => handleCategorySelect(category.name)}
+            onPress={() => setSelectedCategory(category.name)}
           >
-            <Image source={category.icon} style={styles.categoryIcon} />
+            <Text style={styles.categoryIcon}>{category.icon}</Text>
             <Text style={styles.categoryText}>{category.name}</Text>
           </TouchableOpacity>
         ))}
@@ -244,111 +733,625 @@ export default function HomeScreen() {
 
       <View style={styles.productsSection}>
         <Text style={styles.sectionTitle}>Products</Text>
-        {selectedCategory && (
-          <Text style={styles.categoryIndicator}>
-            Category: {selectedCategory} 
-            <Text style={styles.clearCategoryText} onPress={() => setSelectedCategory("All")}>
-              {" "}(Clear)
-            </Text>
-          </Text>
-        )}
-
-        {/* Información de paginación */}
-        {filteredProducts.length > 0 && (
-          <Text style={styles.paginationInfo}>
-            Showing {((currentPage - 1) * PRODUCTS_PER_PAGE) + 1}-{Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length)} of {filteredProducts.length} products
-          </Text>
-        )}
-
-        {filteredProducts.length === 0 && (
-          <Text style={styles.noProductsText}>
-            {searchText.trim() === '' && selectedCategory === "All"
-              ? 'Select a category or search for products.' 
-              : 'No products found.'}
-          </Text>
-        )}
         
-        {/* Productos mostrados en la página actual */}
         {displayedProducts.map((product) => (
-          <TouchableOpacity key={product.id} onPress={() => addToBasket(product)}>
+          <TouchableOpacity 
+            key={product.id} 
+            onPress={() => viewProductPrices(product)}
+          >
             <View style={styles.productCard}>
-              <Image source={{ uri: getImageUrl(product.image_url) }} style={styles.productImage} />
-              <View style={{ marginLeft: 10, flex: 1 }}>
-                <Text style={styles.productName}>{product.name}</Text>
-                
-                <Text style={styles.productCategory}>Category: {product.category}</Text>
+              <View style={styles.productHeader}>
+                <Image 
+                  source={{ uri: product.image_url }} 
+                  style={styles.productHeaderImage} 
+                />
+                <View style={styles.productHeaderInfo}>
+                  <Text style={styles.productName}>{product.name}</Text>
+                  <Text style={styles.productCategory}>Category: {product.category}</Text>
+                </View>
+              </View>
+              
+              {/* Recent Prices for this product */}
+              {(() => {
+                const hasPrices = productPrices[product.id];
+                console.log(`🔍 Checking prices for ${product.name} (ID: ${product.id}): ${hasPrices ? 'HAS PRICES' : 'NO PRICES'}`);
+                if (hasPrices) {
+                  console.log(`📊 Prices for ${product.name}:`, productPrices[product.id]);
+                }
+                return hasPrices;
+              })() && (
+                <View style={styles.productPricesSection}>
+                  {productPrices[product.id].map((priceData, index) => {
+                    console.log(`🎯 Rendering price ${index + 1} for ${product.name}:`, priceData);
+                    return (
+                    <View key={priceData.id} style={styles.priceCard}>
+                      {/* Price and Store Row */}
+                      <View style={styles.priceTopRow}>
+                        <Text style={styles.priceAmount}>£{priceData.price.toFixed(2)}</Text>
+                        {priceData.price_change_percentage !== null && (
+                          <View style={styles.priceChangeContainer}>
+                            <Ionicons 
+                              name={priceData.price_change_percentage > 0 ? "arrow-up" : priceData.price_change_percentage < 0 ? "arrow-down" : "minus"}
+                              size={12} 
+                              color={priceData.price_change_percentage > 0 ? "#FF0000" : priceData.price_change_percentage < 0 ? "#00FF00" : "#808080"} 
+                            />
+                            <Text style={styles.priceChangeText}>
+                              {priceData.price_change_percentage > 0 ? "🔴" : priceData.price_change_percentage < 0 ? "🟢" : "⚪"}
+                              {Math.abs(priceData.price_change_percentage).toFixed(1)}%
+                            </Text>
+                          </View>
+                        )}
+                        {/* Thumbs Up/Down */}
+                        <View style={styles.thumbsContainer}>
+                          <TouchableOpacity 
+                            style={[styles.thumbButton, priceData.user_vote === 'upvote' && styles.activeUpvote]}
+                            onPress={() => handleVote(priceData.id, 'upvote')}
+                          >
+                            <Ionicons 
+                              name="thumbs-up" 
+                              size={12} 
+                              color={priceData.user_vote === 'upvote' ? '#00FF00' : '#808080'} 
+                            />
+                            <Text style={styles.thumbCount}>🟢{priceData.upvotes}</Text>
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity 
+                            style={[styles.thumbButton, priceData.user_vote === 'downvote' && styles.activeDownvote]}
+                            onPress={() => handleVote(priceData.id, 'downvote')}
+                          >
+                            <Ionicons 
+                              name="thumbs-down" 
+                              size={12} 
+                              color={priceData.user_vote === 'downvote' ? '#FF0000' : '#808080'} 
+                            />
+                            <Text style={styles.thumbCount}>🔴{priceData.downvotes}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      
+                      {/* Store and Date Row */}
+                      <View style={styles.priceBottomRow}>
+                        <Text style={styles.storeInfo}>{priceData.store_name} • {priceData.store_location}</Text>
+                        <Text style={styles.priceDate}>{formatDate(priceData.created_at)}</Text>
+                      </View>
+                    </View>
+                  );
+                  })}
+                </View>
+              )}
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity 
+                  style={[styles.viewPricesButton, styles.buttonHalf]}
+                  onPress={() => viewProductPrices(product)}
+                >
+                  <Text style={styles.viewPricesText}>View Prices</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.updatePriceButton, styles.buttonHalf]}
+                  onPress={() => quickUpdatePrice(product)}
+                >
+                  <Text style={styles.updatePriceText}>Update Price</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </TouchableOpacity>
         ))}
 
-        {/* Controles de paginación */}
+        {/* Pagination */}
         {totalPages > 1 && (
           <View style={styles.paginationContainer}>
             <TouchableOpacity 
               style={[styles.paginationButton, !hasPrevPage && styles.disabledButton]}
-              onPress={goToPrevPage}
+              onPress={() => setCurrentPage(currentPage - 1)}
               disabled={!hasPrevPage}
             >
-              <Text style={[styles.paginationButtonText, !hasPrevPage && styles.disabledButtonText]}>
-                Previous
-              </Text>
+              <Text style={styles.paginationButtonText}>Previous</Text>
             </TouchableOpacity>
 
-            <View style={styles.pageNumbersContainer}>
-              {getPageNumbers().map((pageNum) => (
-                <TouchableOpacity
-                  key={pageNum}
-                  style={[
-                    styles.pageNumberButton,
-                    currentPage === pageNum && styles.activePageButton
-                  ]}
-                  onPress={() => goToPage(pageNum)}
-                >
-                  <Text style={[
-                    styles.pageNumberText,
-                    currentPage === pageNum && styles.activePageText
-                  ]}>
-                    {pageNum}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.pageInfo}>
+              Page {currentPage} of {totalPages}
+            </Text>
 
             <TouchableOpacity 
               style={[styles.paginationButton, !hasNextPage && styles.disabledButton]}
-              onPress={goToNextPage}
+              onPress={() => setCurrentPage(currentPage + 1)}
               disabled={!hasNextPage}
             >
-              <Text style={[styles.paginationButtonText, !hasNextPage && styles.disabledButtonText]}>
-                Next
-              </Text>
+              <Text style={styles.paginationButtonText}>Next</Text>
             </TouchableOpacity>
           </View>
         )}
       </View>
-      
+
+      {/* Recent Prices Section */}
+      <View style={styles.recentPricesSection}>
+        <Text style={styles.sectionTitle}>Recent Prices</Text>
+        
+        {loadingRecentPrices ? (
+          <ActivityIndicator size="small" color="#5A31F4" />
+        ) : recentPrices.length === 0 ? (
+          <Text style={styles.noPricesText}>No recent prices available</Text>
+        ) : (
+          recentPrices.map((price) => {
+            const approvalRate = price.upvotes + price.downvotes > 0 
+              ? Math.round((price.upvotes / (price.upvotes + price.downvotes)) * 100)
+              : 0;
+            const isVerified = price.verification_status === 'verified' || approvalRate >= 75;
+            
+            return (
+              <View key={price.id} style={styles.compactRecentPriceCard}>
+                <View style={styles.compactPriceRow}>
+                  {/* Product Image */}
+                  <Image 
+                    source={{ uri: price.product_image_url }} 
+                    style={styles.compactProductImage}
+                  />
+                  
+                  {/* Product Info */}
+                  <View style={styles.compactProductInfo}>
+                    <Text style={styles.compactProductName} numberOfLines={1}>
+                      {price.product_name}
+                    </Text>
+                    <Text style={styles.compactStoreInfo}>
+                      {price.store_name} • {price.store_location}
+                    </Text>
+                  </View>
+                  
+                  {/* Price and Actions */}
+                  <View style={styles.compactPriceActions}>
+                    <View style={styles.compactPriceRow}>
+                      <Text style={styles.compactPriceAmount}>£{price.price.toFixed(2)}</Text>
+                      {/* Verified Badge inline with price */}
+                      {isVerified && (
+                        <View style={styles.compactVerifiedBadge}>
+                          <Text style={styles.compactVerifiedText}>✓</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.compactActionsRow}>
+                      <Text style={styles.compactDate}>{formatDate(price.created_at)}</Text>
+                      
+                      {/* Compact Vote Buttons */}
+                      <View style={styles.compactVoteContainer}>
+                        <TouchableOpacity 
+                          style={styles.compactVoteButton}
+                          onPress={() => handleVote(price.id, 'upvote')}
+                        >
+                          <Ionicons 
+                            name="thumbs-up" 
+                            size={12} 
+                            color={price.user_vote === 'upvote' ? '#00FF00' : '#808080'} 
+                          />
+                          <Text style={styles.compactVoteCount}>
+                            🟢{price.upvotes}
+                          </Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={styles.compactVoteButton}
+                          onPress={() => handleVote(price.id, 'downvote')}
+                        >
+                          <Ionicons 
+                            name="thumbs-down" 
+                            size={12} 
+                            color={price.user_vote === 'downvote' ? '#FF0000' : '#808080'} 
+                          />
+                          <Text style={styles.compactVoteCount}>
+                            🔴{price.downvotes}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </View>
+
+      {/* Price Update Modal */}
+      <Modal
+        visible={showPriceUpdate}
+        animationType="slide"
+        transparent={true}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Price</Text>
+              <TouchableOpacity onPress={resetPriceForm}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Step 1: Product Selection */}
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>1. Select Product</Text>
+              <View style={styles.buttonRow}>
+              <TouchableOpacity 
+                style={[styles.actionButton, { width: '50%' }]}
+                onPress={handleBarcodeScanner}
+              >
+                <Ionicons name="barcode-outline" size={24} color="#5A31F4" />
+                <Text style={styles.actionButtonText}>Scan Barcode</Text>
+              </TouchableOpacity>
+              </View>
+              {selectedProduct && (
+                <View style={styles.selectedProductCard}>
+                  <Text style={styles.selectedProductText}>
+                    Selected: {selectedProduct.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Step 2: Price Input */}
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>2. Enter Price</Text>
+              
+              <View style={styles.buttonRow}>
+                <TouchableOpacity 
+                  style={styles.actionButton}
+                  onPress={handlePricePhoto}
+                >
+                  <Ionicons name="camera" size={24} color="#5A31F4" />
+                  <Text style={styles.actionButtonText}>Photo Price</Text>
+                </TouchableOpacity>
+                
+                <View style={styles.priceInputContainer}>
+                  <Text style={styles.currencySymbol}>£</Text>
+                  <TextInput
+                    style={styles.priceInput}
+                    placeholder="0.00"
+                    value={newPrice}
+                    onChangeText={setNewPrice}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Step 3: Store Information */}
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>3. Store Information</Text>
+              
+              {loadingStores && (
+                <ActivityIndicator size="small" color="#5A31F4" style={{ marginVertical: 10 }} />
+              )}
+              
+              {/* Nearby Stores */}
+              {nearbyStores.length > 0 && (
+                <View style={styles.popularStoresContainer}>
+                  <Text style={styles.popularStoresTitle}>
+                    <Ionicons name="location" size={14} color="#5A31F4" /> Nearby stores:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {nearbyStores.slice(0, 5).map((store, index) => (
+                      <TouchableOpacity
+                        key={`nearby-${index}`}
+                        style={[styles.popularStoreChip, styles.nearbyStoreChip]}
+                        onPress={() => {
+                          setStoreName(store.name);
+                          setStoreLocation(store.address);
+                        }}
+                      >
+                        <Text style={styles.popularStoreText}>
+                          {store.name}
+                        </Text>
+                        <Text style={styles.nearbyStoreDistance}>
+                          {store.distance_meters < 1000 
+                            ? `${store.distance_meters}m away`
+                            : `${(store.distance_meters / 1000).toFixed(1)}km away`
+                          }
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              
+              {/* Popular Stores */}
+              {popularStores.length > 0 && (
+                <View style={styles.popularStoresContainer}>
+                  <Text style={styles.popularStoresTitle}>
+                    <Ionicons name="star" size={14} color="#FFB800" /> Popular stores:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {popularStores.slice(0, 5).map((store, index) => (
+                      <TouchableOpacity
+                        key={`popular-${index}`}
+                        style={styles.popularStoreChip}
+                        onPress={() => {
+                          setStoreName(store.store_name);
+                          setStoreLocation(store.store_location);
+                        }}
+                      >
+                        <Text style={styles.popularStoreText}>
+                          {store.store_name} - {store.store_location}
+                        </Text>
+                        <Text style={styles.popularStoreCount}>
+                          ({store.submission_count} prices)
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              
+              <TextInput
+                style={styles.textInput}
+                placeholder="Store name (e.g. Tesco, ASDA...)"
+                value={storeName}
+                onChangeText={setStoreName}
+              />
+              
+              <TextInput
+                style={styles.textInput}
+                placeholder="Location (e.g. London, Manchester...)"
+                value={storeLocation}
+                onChangeText={setStoreLocation}
+              />
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity 
+              style={[
+                styles.submitButton,
+                (!selectedProduct || !newPrice || !storeName || !storeLocation) && styles.disabledButton
+              ]}
+              onPress={submitPrice}
+              disabled={!selectedProduct || !newPrice || !storeName || !storeLocation || loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text style={styles.submitButtonText}>Submit Price Update</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Barcode Scanner Modal */}
+      {BarCodeScanner && (
+        <Modal
+          visible={showScanner}
+          animationType="slide"
+        >
+          <View style={styles.scannerContainer}>
+            {hasPermission === false ? (
+              <View style={styles.permissionContainer}>
+                <Text style={styles.permissionText}>No camera permission</Text>
+                <TouchableOpacity 
+                  style={styles.scannerCloseButton}
+                  onPress={() => setShowScanner(false)}
+                >
+                  <Text style={styles.scannerCloseText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Camera
+                  style={StyleSheet.absoluteFillObject}
+                  onBarCodeScanned={handleBarCodeScanned}
+                  barCodeScannerSettings={{
+                    barCodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code39', 'code128', 'qr']
+                  }}
+                />
+                <View style={styles.scannerOverlay}>
+                  <Text style={styles.scannerText}>Scan product barcode</Text>
+                  <View style={styles.scannerFrame} />
+                  
+                  <TouchableOpacity 
+                    style={styles.scannerCloseButton}
+                    onPress={() => setShowScanner(false)}
+                  >
+                    <Text style={styles.scannerCloseText}>Cancel</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </Modal>
+      )}
+
+      {/* Product Search Modal */}
+      <Modal
+        visible={showProductSearch}
+        animationType="slide"
+        transparent={true}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Search Products</Text>
+              <TouchableOpacity onPress={() => setShowProductSearch(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <TextInput
+              style={styles.searchModalInput}
+              placeholder="Search products by name, category, or barcode..."
+              value={productSearchText}
+              onChangeText={setProductSearchText}
+              autoFocus
+            />
+
+            {/* Search Results */}
+            <ScrollView style={styles.searchResultsContainer}>
+              {filteredSearchProducts.length === 0 ? (
+                <Text style={styles.noResultsText}>
+                  {productSearchText.trim() === '' ? 'Enter text to search products' : 'No products found'}
+                </Text>
+              ) : (
+                filteredSearchProducts.map((product) => (
+                  <TouchableOpacity
+                    key={product.id}
+                    style={styles.searchResultItem}
+                    onPress={() => selectProductFromSearch(product)}
+                  >
+                    <Image 
+                      source={{ uri: product.image_url }} 
+                      style={styles.searchResultImage} 
+                    />
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName}>{product.name}</Text>
+                      <Text style={styles.searchResultCategory}>{product.category}</Text>
+                      {product.barcode && (
+                        <Text style={styles.searchResultBarcode}>Barcode: {product.barcode}</Text>
+                      )}
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#999" />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Product Prices Modal */}
+      <Modal
+        visible={showProductPrices}
+        animationType="slide"
+        transparent={true}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {selectedProduct?.name} - Community Prices
+              </Text>
+              <TouchableOpacity onPress={() => setShowProductPrices(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.pricesScrollView}>
+              {communityPrices.length === 0 ? (
+                <Text style={styles.noPricesText}>No prices submitted yet</Text>
+              ) : (
+                communityPrices.map((price) => {
+                  const trend = getPriceTrend(price);
+                  return (
+                    <View key={price.id} style={styles.priceCard}>
+                      <View style={styles.priceHeader}>
+                        <Text style={styles.priceAmount}>£{price.price.toFixed(2)}</Text>
+                        {trend.isVerified && (
+                          <View style={styles.verifiedBadge}>
+                            <Text style={styles.verifiedText}>Verified</Text>
+                          </View>
+                        )}
+                        {trend.isDisputed && (
+                          <View style={styles.disputedBadge}>
+                            <Text style={styles.disputedText}>Disputed</Text>
+                          </View>
+                        )}
+                      </View>
+                      
+                      <Text style={styles.storeInfo}>{price.store_name}</Text>
+                      <Text style={styles.locationInfo}>
+                        {price.store_location} • {new Date(price.created_at).toLocaleDateString()}
+                      </Text>
+                      
+                      <View style={styles.voteContainer}>
+                        <TouchableOpacity 
+                          style={[
+                            styles.voteButton,
+                            price.user_vote === 'upvote' && styles.activeUpvote
+                          ]}
+                          onPress={() => handleVote(price.id, 'upvote')}
+                        >
+                          <Ionicons 
+                            name="thumbs-up" 
+                            size={16} 
+                            color={price.user_vote === 'upvote' ? '#4CAF50' : '#666'} 
+                          />
+                          <Text style={styles.voteCount}>{price.upvotes}</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                          style={[
+                            styles.voteButton,
+                            price.user_vote === 'downvote' && styles.activeDownvote
+                          ]}
+                          onPress={() => handleVote(price.id, 'downvote')}
+                        >
+                          <Ionicons 
+                            name="thumbs-down" 
+                            size={16} 
+                            color={price.user_vote === 'downvote' ? '#F44336' : '#666'} 
+                          />
+                          <Text style={styles.voteCount}>{price.downvotes}</Text>
+                        </TouchableOpacity>
+                        
+                        <Text style={styles.approvalRate}>
+                          {trend.approvalRate}% approval
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#5A31F4" />
+        </View>
+      )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
-    padding: 16, 
+    flex: 1,
     backgroundColor: '#F9F9F9' 
   },
   title: { 
     fontSize: 28, 
     fontWeight: 'bold', 
-    marginBottom: 12, 
+    marginBottom: 4, 
     textAlign: 'center', 
-    color: '#5A31F4' 
+    color: '#5A31F4',
+    marginTop: 20,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  updatePriceButton: {
+    backgroundColor: '#5A31F4',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
+  updatePriceButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    fontSize: 16,
+    marginLeft: 8,
   },
   searchInput: {
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     padding: 12,
     fontSize: 16,
+    marginHorizontal: 16,
     marginBottom: 16,
     borderColor: '#DDD',
     borderWidth: 1,
@@ -357,20 +1360,23 @@ const styles = StyleSheet.create({
     fontSize: 18, 
     fontWeight: '600', 
     marginBottom: 8, 
-    marginTop: 12 
+    marginTop: 12,
+    marginHorizontal: 16,
   },
   categoriesContainer: {
     paddingBottom: 12,
     paddingTop: 5,
+    paddingHorizontal: 16,
     gap: 12,
     flexDirection: 'row',
   },
   categoryItem: { 
-    width: 80, 
     alignItems: 'center',
-    padding: 5,
-    borderRadius: 8,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
     marginRight: 12,
+    minWidth: 70,
   },
   selectedCategory: {
     backgroundColor: 'rgba(90, 49, 244, 0.1)',
@@ -378,8 +1384,7 @@ const styles = StyleSheet.create({
     borderColor: '#5A31F4'
   },
   categoryIcon: { 
-    width: 50, 
-    height: 50, 
+    fontSize: 24,
     marginBottom: 4 
   },
   categoryText: { 
@@ -388,33 +1393,12 @@ const styles = StyleSheet.create({
   },
   productsSection: {
     marginVertical: 10,
-  },
-  categoryIndicator: {
-    fontSize: 14,
-    color: '#555',
-    marginBottom: 10,
-  },
-  clearCategoryText: {
-    color: '#5A31F4',
-    fontWeight: '500',
-  },
-  paginationInfo: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 15,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  noProductsText: { 
-    color: 'gray',
-    textAlign: 'center',
-    marginVertical: 20,
+    paddingHorizontal: 16,
   },
   productCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: '#fff',
-    padding: 10,
+    padding: 12,
     marginBottom: 10,
     borderRadius: 10,
     shadowColor: '#000',
@@ -424,29 +1408,50 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   productImage: { 
-    width: 50, 
-    height: 50, 
-    borderRadius: 5 
+    width: 60, 
+    height: 60, 
+    borderRadius: 8 
+  },
+  productInfo: {
+    flex: 1,
   },
   productName: { 
     fontWeight: 'bold', 
-    fontSize: 16 
-  },
-  productDescription: { 
-    fontSize: 12, 
-    color: '#555' 
+    fontSize: 16,
+    marginBottom: 4,
   },
   productCategory: { 
-    fontSize: 10, 
+    fontSize: 12, 
     color: '#888', 
-    marginTop: 4 
+    marginBottom: 8,
   },
-  // Estilos de paginación
+  viewPricesButton: {
+    backgroundColor: '#E8E0FF',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  viewPricesText: {
+    color: '#5A31F4',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  buttonHalf: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  updatePriceText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   paginationContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 20,
     marginBottom: 20,
   },
   paginationButton: {
@@ -455,7 +1460,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 8,
     marginHorizontal: 10,
-    alignItems: 'center',
   },
   disabledButton: {
     backgroundColor: '#CCC',
@@ -463,34 +1467,646 @@ const styles = StyleSheet.create({
   paginationButtonText: {
     color: '#FFFFFF',
     fontWeight: '600',
+  },
+  pageInfo: {
     fontSize: 14,
+    color: '#666',
   },
-  disabledButtonText: {
-    color: '#888',
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
-  pageNumbersContainer: {
+  modalContent: {
+    backgroundColor: 'white',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  modalSection: {
+    marginBottom: 20,
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 16,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+  },
+  actionButtonText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#666',
+  },
+  selectedProductCard: {
+    backgroundColor: '#E8F5E9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  selectedProductText: {
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  priceInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  currencySymbol: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+    marginRight: 8,
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    padding: 16,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  submitButton: {
+    backgroundColor: '#5A31F4',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  scannerContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scannerText: {
+    color: 'white',
+    fontSize: 18,
+    marginBottom: 20,
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent',
+  },
+  scannerCloseButton: {
+    position: 'absolute',
+    bottom: 50,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 25,
+  },
+  scannerCloseText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pricesScrollView: {
+    maxHeight: 400,
+  },
+  noPricesText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    marginTop: 20,
+  },
+  priceCard: {
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  priceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  priceAmount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  verifiedBadge: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  verifiedText: {
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  disputedBadge: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  disputedText: {
+    color: '#C62828',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  storeInfo: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  locationInfo: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 12,
+  },
+  voteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  voteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginRight: 8,
+  },
+  activeUpvote: {
+    backgroundColor: '#E8F5E9',
+  },
+  activeDownvote: {
+    backgroundColor: '#FFEBEE',
+  },
+  voteCount: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  approvalRate: {
+    marginLeft: 'auto',
+    fontSize: 12,
+    color: '#666',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'black',
+  },
+  permissionText: {
+    color: 'white',
+    fontSize: 18,
+    marginBottom: 20,
+  },
+  searchModalInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  searchResultsContainer: {
+    maxHeight: 400,
+  },
+  noResultsText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 16,
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  searchResultImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  searchResultCategory: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 2,
+  },
+  searchResultBarcode: {
+    fontSize: 12,
+    color: '#999',
+  },
+  // Recent Prices Section Styles
+  recentPricesSection: {
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    padding: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  recentPriceCard: {
+    backgroundColor: '#F8F9FA',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#5A31F4',
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  recentPriceAmount: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4CAF50',
+  },
+  recentStoreInfo: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  recentLocationInfo: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+  },
+  recentVoteContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    
   },
-  pageNumberButton: {
-    backgroundColor: '#F0F0F0',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    minWidth: 35,
+  recentVoteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    gap: 4,
+  },
+  recentVoteCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
+  },
+  verifiedBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 'auto',
+  },
+  verifiedText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  activePageButton: {
-    backgroundColor: '#5A31F4',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
-  pageNumberText: {
-    fontSize: 14,
+  // Product Header Styles
+  productHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 12,
+  },
+  productHeaderImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
+  productHeaderInfo: {
+    flex: 1,
+  },
+  // Product Prices Section Styles
+  productPricesSection: {
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  priceCard: {
+    backgroundColor: '#F8F9FA',
+    padding: 8,
+    marginVertical: 2,
+    borderRadius: 6,
+    borderLeftWidth: 2,
+    borderLeftColor: '#5A31F4',
+  },
+  priceTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  priceAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  priceChangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  priceChangeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  thumbsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  thumbButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 12,
+    gap: 2,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  activeUpvote: {
+    backgroundColor: 'rgba(39, 174, 96, 0.1)',
+  },
+  activeDownvote: {
+    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+  },
+  thumbCount: {
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  priceBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  storeInfo: {
+    fontSize: 12,
+    color: '#666',
     fontWeight: '500',
-    color: '#333',
   },
-  activePageText: {
-    color: '#FFFFFF',
+  priceDate: {
+    fontSize: 10,
+    color: '#999',
+  },
+  // Recent Prices with Product Info
+  productInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    gap: 10,
+  },
+  recentProductImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    resizeMode: 'cover',
+  },
+  recentProductInfo: {
+    flex: 1,
+  },
+  recentProductName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 4,
+    lineHeight: 18,
+  },
+  // Compact Recent Prices Styles
+  compactRecentPriceCard: {
+    backgroundColor: '#FAFAFA',
+    marginVertical: 3,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#5A31F4',
+  },
+  compactPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  compactProductImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 4,
+    resizeMode: 'cover',
+    marginRight: 10,
+  },
+  compactProductInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  compactProductName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2c3e50',
+    marginBottom: 2,
+  },
+  compactStoreInfo: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+  },
+  compactPriceActions: {
+    alignItems: 'flex-end',
+  },
+  compactPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  compactPriceAmount: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#2c3e50',
+  },
+  compactActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactDate: {
+    fontSize: 9,
+    color: '#999',
+    fontWeight: '500',
+  },
+  compactVoteContainer: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  compactVoteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 1,
+  },
+  compactVoteCount: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  compactVerifiedBadge: {
+    backgroundColor: '#27ae60',
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactVerifiedText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  // Color styles for price changes and votes
+  priceIncrease: {
+    color: 'red',
+  },
+  priceDecrease: {
+    color: 'green',
+  },
+  priceNeutral: {
+    color: 'gray',
+  },
+  thumbUpCount: {
+    color: 'green',
+  },
+  thumbDownCount: {
+    color: 'red',
+  },
+  // Popular stores styles
+  popularStoresContainer: {
+    marginBottom: 12,
+  },
+  popularStoresTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  popularStoreChip: {
+    backgroundColor: '#E8E0FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#5A31F4',
+  },
+  popularStoreText: {
+    color: '#5A31F4',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  popularStoreCount: {
+    color: '#8B7AB8',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  nearbyStoreChip: {
+    backgroundColor: '#E8F5FF',
+    borderColor: '#2196F3',
+  },
+  nearbyStoreDistance: {
+    color: '#1976D2',
+    fontSize: 10,
+    marginTop: 2,
+    fontWeight: '500',
   },
 });
+
+// Export as default
+export default HomeScreen;

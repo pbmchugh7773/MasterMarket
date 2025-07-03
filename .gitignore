@@ -42,3 +42,10 @@ yarn.lock
 
 # Documents
 Documents/
+
+# Mobile backend configs
+mobile/config.ts
+# Ignorar archivos sensibles
+backend/.env
+
+/mobile/android/

@@ -7,17 +7,29 @@ import {
   Alert,
   Button,
 } from 'react-native';
+import { useAuth } from '../../context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { router } from 'expo-router';
 import { API_URL } from '@/config';
 
 export default function MeScreen() {
-  const [user, setUser] = useState<any>(null);
+  const { user: authUser, loading: authLoading, logout } = useAuth();
+  const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+
+  // Check authentication and redirect if needed
+  useEffect(() => {
+    if (!authLoading && !authUser) {
+      console.log('🔒 No user found, redirecting to login...');
+      router.replace('/login');
+    }
+  }, [authLoading, authUser]);
 
   useEffect(() => {
     const fetchUser = async () => {
+      if (!authUser) return;
+      
       const token = await AsyncStorage.getItem('token');
       console.log('🔑 Token leído desde AsyncStorage:', token);
 
@@ -34,7 +46,7 @@ export default function MeScreen() {
           },
         });
 
-        setUser(response.data);
+        setUserData(response.data);
       } catch (error: any) {
         console.error('❌ Error al obtener el perfil:', error.response?.data || error.message);
         Alert.alert('Error', 'No se pudo obtener el perfil');
@@ -44,15 +56,15 @@ export default function MeScreen() {
     };
 
     fetchUser();
-  }, []);
+  }, [authUser]);
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('token');
+    await logout();
     Alert.alert('Sesión cerrada');
-    router.replace('/login');
   };
 
-  if (loading) {
+  // Show loading screen while checking auth
+  if (authLoading || loading) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" />
@@ -61,7 +73,12 @@ export default function MeScreen() {
     );
   }
 
-  if (!user) {
+  // If user is null after loading, it will redirect in useEffect
+  if (!authUser) {
+    return null;
+  }
+
+  if (!userData) {
     return (
       <View style={styles.container}>
         <Text>No se pudo cargar el perfil</Text>
@@ -72,11 +89,11 @@ export default function MeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Wellcome, {user.full_name || 'Usuario'}</Text>
-      <Text>Email: {user.email}</Text>
-      <Text>Profile: {user.is_premium ? 'Premium' : 'Free'}</Text>
-      <Text>Active: {user.is_active ? 'Sí' : 'No'}</Text>
-      <Text>Registered at: {new Date(user.created_at).toLocaleString()}</Text>
+      <Text style={styles.title}>Wellcome, {userData.full_name || 'Usuario'}</Text>
+      <Text>Email: {userData.email}</Text>
+      <Text>Profile: {userData.is_premium ? 'Premium' : 'Free'}</Text>
+      <Text>Active: {userData.is_active ? 'Sí' : 'No'}</Text>
+      <Text>Registered at: {new Date(userData.created_at).toLocaleString()}</Text>
       <View style={{ marginTop: 20 }}>
         <Button title="Cerrar sesión" color="red" onPress={handleLogout} />
       </View>

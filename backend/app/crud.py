@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from app.models import Price, PriceHistory, Product, Basket, GenericProduct
-from app.schemas import PriceCreate, PriceUpdate, ProductCreate, ProductUpdate, BasketCreate, BasketUpdate, ProductSummaryResponse, ProductSummaryItem
+from app.models import Price, PriceHistory, Product, Basket, GenericProduct, CommunityPrice, PriceVote
+from app.schemas import PriceCreate, PriceUpdate, ProductCreate, ProductUpdate, BasketCreate, BasketUpdate, ProductSummaryResponse, ProductSummaryItem, CommunityPriceCreate, CommunityPriceUpdate, PriceVoteCreate
 from datetime import datetime, timezone
 from app.models import User
 from app.schemas import UserCreate, UserUpdate, ProductOrGenericOut
@@ -159,11 +159,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 # ----------- Crear usuario -----------
 
 def create_user(db: Session, user: schemas.UserCreate) -> models.User:
+    # Handle password for regular and OAuth users
+    hashed_password = None
+    if user.password:
+        hashed_password = get_password_hash(user.password)
+    
     db_user = models.User(
         email=user.email,
-        hashed_password=get_password_hash(user.password),
+        hashed_password=hashed_password,
         full_name=user.full_name,
-        is_premium=user.is_premium
+        is_premium=user.is_premium,
+        location=user.location,
+        country=user.country,
+        currency=user.currency,
+        provider="email"  # Default provider for regular registration
     )
     db.add(db_user)
     db.commit()
@@ -176,7 +185,12 @@ def authenticate_user(db: Session, email: str, password: str):
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
         return None
-    if not verify_password(password, user.hashed_password):
+    
+    # Check if user is OAuth user (no password)
+    if user.provider == "google" and not user.hashed_password:
+        return None  # OAuth users can't login with password
+    
+    if not user.hashed_password or not verify_password(password, user.hashed_password):
         return None
     return user
 
@@ -324,3 +338,92 @@ def get_all_simple_products(db: Session) -> list[ProductOrGenericOut]:
         ))
 
     return all_products
+
+# ---------- COMMUNITY PRICE ----------
+
+def create_community_price(db: Session, price: CommunityPriceCreate, user_id: int):
+    db_community_price = CommunityPrice(
+        product_id=price.product_id,
+        user_id=user_id,
+        store_name=price.store_name,
+        store_location=price.store_location,
+        price=price.price,
+        price_photo_url=price.price_photo_url,
+        currency=price.currency
+    )
+    db.add(db_community_price)
+    db.commit()
+    db.refresh(db_community_price)
+    return db_community_price
+
+def get_community_price(db: Session, price_id: int):
+    return db.query(CommunityPrice).filter(CommunityPrice.id == price_id).first()
+
+def get_community_prices_by_product(db: Session, product_id: int, skip: int = 0, limit: int = 100):
+    return db.query(CommunityPrice).filter(
+        CommunityPrice.product_id == product_id
+    ).offset(skip).limit(limit).all()
+
+def update_community_price(db: Session, price_id: int, price_update: CommunityPriceUpdate):
+    db_price = db.query(CommunityPrice).filter(CommunityPrice.id == price_id).first()
+    if not db_price:
+        return None
+    
+    update_data = price_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_price, key, value)
+    
+    db.commit()
+    db.refresh(db_price)
+    return db_price
+
+def delete_community_price(db: Session, price_id: int):
+    db_price = db.query(CommunityPrice).filter(CommunityPrice.id == price_id).first()
+    if not db_price:
+        return None
+    db.delete(db_price)
+    db.commit()
+    return db_price
+
+# ---------- PRICE VOTE ----------
+
+def create_price_vote(db: Session, vote: PriceVoteCreate, user_id: int):
+    db_vote = PriceVote(
+        price_id=vote.price_id,
+        user_id=user_id,
+        vote_type=vote.vote_type
+    )
+    db.add(db_vote)
+    db.commit()
+    db.refresh(db_vote)
+    return db_vote
+
+def get_price_vote(db: Session, price_id: int, user_id: int):
+    return db.query(PriceVote).filter(
+        PriceVote.price_id == price_id,
+        PriceVote.user_id == user_id
+    ).first()
+
+def update_price_vote(db: Session, price_id: int, user_id: int, vote_type: str):
+    db_vote = db.query(PriceVote).filter(
+        PriceVote.price_id == price_id,
+        PriceVote.user_id == user_id
+    ).first()
+    if not db_vote:
+        return None
+    db_vote.vote_type = vote_type
+    db.commit()
+    db.refresh(db_vote)
+    return db_vote
+
+def delete_price_vote(db: Session, price_id: int, user_id: int):
+    db_vote = db.query(PriceVote).filter(
+        PriceVote.price_id == price_id,
+        PriceVote.user_id == user_id
+    ).first()
+    if not db_vote:
+        return None
+    db.delete(db_vote)
+    db.commit()
+    return db_vote
+

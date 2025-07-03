@@ -8,6 +8,10 @@
 # Opcionalmente, si quieres excluir node_modules de mobile (se instala remótamente)
 mobile/node_modules/
 
+# Ignorar directorios nativos para usar Prebuild/CNG
+mobile/android/
+mobile/ios/
+
 # También ignora estos si existen
 frontend/
 backend/

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(grep:*)",
+      "Bash(sudo npm install expo-auth-session expo-crypto)",
+      "Bash(python:*)",
+      "Bash(npm run android:*)",
+      "Bash(rg:*)"
+    ],
+    "deny": []
+  }
+}
