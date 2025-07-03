@@ -47,7 +47,7 @@ def login_user(
     print(f"   ➤ Rol: {getattr(user, 'role', 'N/A')}")
     print(f"   ➤ Premium: {user.is_premium}")
 
-    access_token = auth.create_access_token(data={"sub": user.id})
+    access_token = auth.create_access_token(data={"sub": user.email})
 
     try:
         return {
