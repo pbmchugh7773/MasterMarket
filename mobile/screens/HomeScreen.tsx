@@ -9,6 +9,7 @@ import {
   Image,
   ScrollView,
 } from 'react-native';
+import { useLanguage } from '../context/LanguageContext';
 
 const categories = [
   { name: 'Supermarket', icon: require('../assets/icons/supermarket.png') },
@@ -29,6 +30,7 @@ const sampleBasket = [
 
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
+  const { t } = useLanguage();
 
   return (
     <ScrollView style={styles.container}>
@@ -37,13 +39,13 @@ export default function HomeScreen() {
       {/* Search Bar */}
       <TextInput
         style={styles.searchInput}
-        placeholder="Search product: e.g. milk, bread..."
+        placeholder={t('products.searchProducts')}
         value={searchText}
         onChangeText={setSearchText}
       />
 
       {/* Categories */}
-      <Text style={styles.sectionTitle}>Browse by Category</Text>
+      <Text style={styles.sectionTitle}>{t('products.categories.food')}</Text>
       <View style={styles.categoriesContainer}>
         {categories.map((category) => (
           <TouchableOpacity key={category.name} style={styles.categoryItem}>
@@ -54,7 +56,7 @@ export default function HomeScreen() {
       </View>
 
       {/* Basket */}
-      <Text style={styles.sectionTitle}>My Basket</Text>
+      <Text style={styles.sectionTitle}>{t('basket.myBasket')}</Text>
       <View style={styles.basketContainer}>
         {sampleBasket.map((item) => (
           <View key={item.id} style={styles.basketItem}>
@@ -70,10 +72,10 @@ export default function HomeScreen() {
       {/* Action Buttons */}
       <View style={styles.buttonsContainer}>
         <TouchableOpacity style={styles.compareButton}>
-          <Text style={styles.buttonText}>Compare Prices</Text>
+          <Text style={styles.buttonText}>{t('prices.prices')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.matchButton}>
-          <Text style={styles.buttonText}>Mix & Match</Text>
+          <Text style={styles.buttonText}>{t('products.products')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
