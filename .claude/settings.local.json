@@ -8,7 +8,9 @@
       "Bash(sudo npm install expo-auth-session expo-crypto)",
       "Bash(python:*)",
       "Bash(npm run android:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(rm:*)",
+      "Bash(npx expo prebuild:*)"
     ],
     "deny": []
   }

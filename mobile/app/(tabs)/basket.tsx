@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { useBasket } from "../../context/BasketContext";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { FontAwesome } from "@expo/vector-icons";
 import { API_URL } from "../../config";
 import { router } from 'expo-router';
@@ -45,6 +46,7 @@ type BasketItem = {
 
 const BasketScreen = () => {
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const {
     basket,
     removeFromBasket,
@@ -66,7 +68,7 @@ const BasketScreen = () => {
     return (
       <View style={[styles.container, styles.centerContent]}>
         <ActivityIndicator size="large" color="#5A31F4" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -172,9 +174,9 @@ const BasketScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>🛒 Your Basket</Text>
+        <Text style={styles.title}>🛒 {t('basket.myBasket')}</Text>
         <TouchableOpacity onPress={refreshPrices} style={styles.refreshButton}>
-          <Text style={styles.refreshButtonText}>🔄 Refresh Prices</Text>
+          <Text style={styles.refreshButtonText}>🔄 {t('common.refresh')} {t('prices.prices')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -184,8 +186,8 @@ const BasketScreen = () => {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <FontAwesome name="shopping-basket" size={60} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>Your basket is empty</Text>
-            <Text style={styles.emptySubText}>Add products to compare prices</Text>
+            <Text style={styles.emptyText}>{t('basket.emptyBasket')}</Text>
+            <Text style={styles.emptySubText}>{t('basket.continueShopping')}</Text>
           </View>
         }
         showsVerticalScrollIndicator={false}
@@ -193,7 +195,7 @@ const BasketScreen = () => {
         ListFooterComponent={() =>
           basket.length > 0 ? (
             <View style={styles.totalsCard}>
-              <Text style={styles.totalsTitle}>Total by Supermarket</Text>
+              <Text style={styles.totalsTitle}>{t('basket.total')}</Text>
 
               {["Tesco", "Aldi", "Lidl"].map((label) => (
                 <View key={label} style={styles.chartRow}>
@@ -232,7 +234,7 @@ const BasketScreen = () => {
                 style={styles.clearButton}
               >
                 <FontAwesome name="trash" size={16} color={COLORS.buttonText} style={styles.clearButtonIcon} />
-                <Text style={styles.clearButtonText}>Delete Basket</Text>
+                <Text style={styles.clearButtonText}>{t('basket.clearBasket')}</Text>
               </TouchableOpacity>
             </View>
           ) : null

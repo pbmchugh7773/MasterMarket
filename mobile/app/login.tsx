@@ -12,6 +12,7 @@ import {
   Modal,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import axios from "axios";
 import { AxiosError } from "axios";
 import { Ionicons } from "@expo/vector-icons";
@@ -58,9 +59,10 @@ const CountrySelector: React.FC<{
   countries: Country[];
   selectedCountry: string;
   onSelectCountry: (code: string, currency: string) => void;
-}> = ({ countries, selectedCountry, onSelectCountry }) => (
+  t: (key: string) => string;
+}> = ({ countries, selectedCountry, onSelectCountry, t }) => (
   <View style={styles.pickerContainer}>
-    <Text style={styles.pickerLabel}>Country:</Text>
+    <Text style={styles.pickerLabel}>{t('profile.country')}:</Text>
     <ScrollView 
       horizontal 
       showsHorizontalScrollIndicator={false}
@@ -94,7 +96,8 @@ const CountrySelectionModal: React.FC<{
   onSelectCountry: (code: string, currency: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
-}> = ({ visible, googleAuthData, selectedCountry, onSelectCountry, onConfirm, onCancel }) => (
+  t: (key: string, options?: any) => string;
+}> = ({ visible, googleAuthData, selectedCountry, onSelectCountry, onConfirm, onCancel, t }) => (
   <Modal
     visible={visible}
     animationType="slide"
@@ -103,12 +106,12 @@ const CountrySelectionModal: React.FC<{
   >
     <View style={styles.modalOverlay}>
       <View style={styles.modalContent}>
-        <Text style={styles.modalTitle}>Complete Your Profile</Text>
+        <Text style={styles.modalTitle}>{t('profile.editProfile')}</Text>
         <Text style={styles.modalSubtitle}>
-          Welcome {googleAuthData?.fullName}! Please select your country to continue.
+          {t('messages.welcomeUser', { name: googleAuthData?.fullName })} {t('auth.selectCountry')}.
         </Text>
 
-        <Text style={styles.pickerLabel}>Select Your Country:</Text>
+        <Text style={styles.pickerLabel}>{t('auth.selectCountry')}:</Text>
         <ScrollView 
           showsVerticalScrollIndicator={false}
           style={styles.countryList}
@@ -140,13 +143,13 @@ const CountrySelectionModal: React.FC<{
             style={[styles.modalButton, styles.cancelButton]}
             onPress={onCancel}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.modalButton, styles.confirmButton]}
             onPress={onConfirm}
           >
-            <Text style={styles.confirmButtonText}>Continue</Text>
+            <Text style={styles.confirmButtonText}>{t('common.next')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -171,6 +174,7 @@ export default function LoginScreen() {
   
   // Hooks
   const { login } = useAuth();
+  const { t } = useLanguage();
 
   // Handlers
   const handleSelectCountry = (countryCode: string, countryCurrency: string) => {
@@ -194,7 +198,7 @@ export default function LoginScreen() {
       await login(user, access_token);
     } catch (err) {
       const error = err as AxiosError;
-      Alert.alert("Error", "Invalid credentials or server unavailable");
+      Alert.alert(t('common.error'), t('auth.loginError'));
       console.error(error.response?.data || error.message);
     }
   };
@@ -209,18 +213,18 @@ export default function LoginScreen() {
         currency,
       });
 
-      Alert.alert("✅ Success", "Account created! You can now sign in");
+      Alert.alert(t('common.success'), t('auth.registrationSuccess'));
       setIsRegistering(false);
       resetForm();
     } catch (error: any) {
-      Alert.alert("Error", error.message || "Failed to create account");
+      Alert.alert(t('common.error'), error.message || t('auth.registrationError'));
       console.error(error);
     }
   };
 
   const handleGoogleAuth = async (idToken: string | undefined, accessToken: string | undefined) => {
     if (!idToken) {
-      Alert.alert("Error", "No ID token received from Google");
+      Alert.alert(t('common.error'), t('errors.unknownError'));
       return;
     }
 
@@ -261,10 +265,10 @@ export default function LoginScreen() {
           setShowCountrySelection(true);
         } catch (parseError) {
           console.error("Failed to parse ID token:", parseError);
-          Alert.alert("Error", "Failed to process Google authentication");
+          Alert.alert(t('common.error'), t('errors.unknownError'));
         }
       } else {
-        Alert.alert("Error", "Google authentication failed");
+        Alert.alert(t('common.error'), t('auth.loginError'));
         console.error(err.response?.data || err.message);
       }
     }
@@ -289,7 +293,7 @@ export default function LoginScreen() {
         await handleGoogleAuth(idToken, accessToken);
       } else {
         console.error('❌ No ID token received');
-        Alert.alert('Error', 'Failed to get ID token from Google');
+        Alert.alert(t('common.error'), t('errors.unknownError'));
       }
     } catch (error: any) {
       console.error('🔥 Google Sign-In error:', error);
@@ -300,10 +304,10 @@ export default function LoginScreen() {
         console.log('⏳ Sign-In already in progress');
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         console.log('📱 Play Services not available');
-        Alert.alert('Error', 'Google Play Services not available');
+        Alert.alert(t('common.error'), t('errors.unknownError'));
       } else {
         console.log('❌ Other error:', error.message);
-        Alert.alert('Error', 'Failed to sign in with Google');
+        Alert.alert(t('common.error'), t('auth.loginError'));
       }
     }
   };
@@ -343,7 +347,7 @@ export default function LoginScreen() {
     } catch (error: any) {
       console.error('❌ Google registration error:', error);
       console.error('📊 Error response:', error.response?.data);
-      Alert.alert('Error', `Failed to complete registration: ${error.response?.data?.detail || error.message}`);
+      Alert.alert(t('common.error'), `${t('auth.registrationError')}: ${error.response?.data?.detail || error.message}`);
     }
   };
 
@@ -367,14 +371,14 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <Text style={styles.title}>
-        {isRegistering ? "Create Account" : "Sign In"}
+        {isRegistering ? t('auth.createAccount') : t('auth.login')}
       </Text>
 
       {isRegistering && (
         <>
           <TextInput
             style={styles.input}
-            placeholder="Full Name"
+            placeholder={t('profile.name')}
             placeholderTextColor="#999"
             value={fullName}
             onChangeText={setFullName}
@@ -384,17 +388,18 @@ export default function LoginScreen() {
             countries={COUNTRIES}
             selectedCountry={country}
             onSelectCountry={handleSelectCountry}
+            t={t}
           />
           
           <View style={styles.currencyContainer}>
-            <Text style={styles.currencyLabel}>Currency: {currency}</Text>
+            <Text style={styles.currencyLabel}>{t('profile.currency')}: {currency}</Text>
           </View>
         </>
       )}
 
       <TextInput
         style={styles.input}
-        placeholder="Email"
+        placeholder={t('auth.email')}
         placeholderTextColor="#999"
         value={email}
         onChangeText={setEmail}
@@ -405,7 +410,7 @@ export default function LoginScreen() {
       <View style={styles.passwordContainer}>
         <TextInput
           style={styles.passwordInput}
-          placeholder="Password"
+          placeholder={t('auth.password')}
           placeholderTextColor="#999"
           value={password}
           onChangeText={setPassword}
@@ -425,19 +430,19 @@ export default function LoginScreen() {
         onPress={isRegistering ? handleRegister : handleLogin}
       >
         <Text style={styles.buttonText}>
-          {isRegistering ? "Sign Up" : "Sign In"}
+          {isRegistering ? t('auth.register') : t('auth.login')}
         </Text>
       </TouchableOpacity>
 
       {!isRegistering && (
         <>
-          <Text style={styles.orText}>or</Text>
+          <Text style={styles.orText}>{t('common.or') || 'or'}</Text>
           <TouchableOpacity
             style={styles.googleButton}
             onPress={handleGoogleSignIn}
           >
             <Ionicons name="logo-google" size={20} color="#4285f4" />
-            <Text style={styles.googleButtonText}>Sign in with Google</Text>
+            <Text style={styles.googleButtonText}>{t('auth.loginWithGoogle')}</Text>
           </TouchableOpacity>
         </>
       )}
@@ -445,8 +450,8 @@ export default function LoginScreen() {
       <TouchableOpacity onPress={toggleMode} style={styles.switch}>
         <Text style={styles.switchText}>
           {isRegistering
-            ? "Already have an account? Sign In"
-            : "Don't have an account? Sign Up"}
+            ? t('auth.alreadyHaveAccount')
+            : t('auth.dontHaveAccount')}
         </Text>
       </TouchableOpacity>
 
@@ -460,6 +465,7 @@ export default function LoginScreen() {
           setShowCountrySelection(false);
           setGoogleAuthData(null);
         }}
+        t={t}
       />
     </KeyboardAvoidingView>
   );

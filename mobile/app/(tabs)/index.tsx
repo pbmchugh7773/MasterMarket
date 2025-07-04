@@ -17,6 +17,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { fetchProducts, submitCommunityPrice, searchProductByBarcode, getProductCommunityPrices, voteCommunityPrice, extractPriceFromPhoto, getTrendingPrices, getProductRecentPrices, debugCheckToken, getPopularStores, getNearbyStores } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useBasket } from '../../context/BasketContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 import { router } from 'expo-router';
 
@@ -92,6 +93,7 @@ const categories = [
 const PRODUCTS_PER_PAGE = 10;
 
 export default function HomeScreen() {
+  const { t } = useLanguage();
   const [searchText, setSearchText] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -689,7 +691,7 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.titleSection}>
           <Text style={styles.title}>MasterMarket</Text>
-          <Text style={styles.subtitle}>Community Price Tracker</Text>
+          <Text style={styles.subtitle}>{t('prices.prices')}</Text>
         </View>
         
         {/* Country and Currency Indicator */}
@@ -735,7 +737,7 @@ export default function HomeScreen() {
 
       <TextInput
         style={styles.searchInput}
-        placeholder="Search product: e.g. milk, bread..."
+        placeholder={t('products.searchProducts')}
         value={searchText}
         onChangeText={setSearchText}
       />
@@ -763,7 +765,7 @@ export default function HomeScreen() {
       </ScrollView>
 
       <View style={styles.productsSection}>
-        <Text style={styles.sectionTitle}>Products</Text>
+        <Text style={styles.sectionTitle}>{t('products.products')}</Text>
         
         {displayedProducts.map((product) => (
           <TouchableOpacity 
@@ -856,13 +858,13 @@ export default function HomeScreen() {
                   style={[styles.viewPricesButton, styles.buttonHalf]}
                   onPress={() => viewProductPrices(product)}
                 >
-                  <Text style={styles.viewPricesText}>View Prices</Text>
+                  <Text style={styles.viewPricesText}>{t('prices.prices')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.updatePriceButton, styles.buttonHalf]}
                   onPress={() => quickUpdatePrice(product)}
                 >
-                  <Text style={styles.updatePriceText}>Update Price</Text>
+                  <Text style={styles.updatePriceText}>{t('prices.updatePrice')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -897,12 +899,12 @@ export default function HomeScreen() {
 
       {/* Recent Prices Section */}
       <View style={styles.recentPricesSection}>
-        <Text style={styles.sectionTitle}>Recent Prices</Text>
+        <Text style={styles.sectionTitle}>{t('prices.priceHistory')}</Text>
         
         {loadingRecentPrices ? (
           <ActivityIndicator size="small" color="#5A31F4" />
         ) : recentPrices.length === 0 ? (
-          <Text style={styles.noPricesText}>No recent prices available</Text>
+          <Text style={styles.noPricesText}>{t('prices.noPrices')}</Text>
         ) : (
           recentPrices.map((price) => {
             const approvalRate = price.upvotes + price.downvotes > 0 
@@ -991,7 +993,7 @@ export default function HomeScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Update Price</Text>
+              <Text style={styles.modalTitle}>{t('prices.updatePrice')}</Text>
               <TouchableOpacity onPress={resetPriceForm}>
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
@@ -1005,7 +1007,7 @@ export default function HomeScreen() {
                 style={[styles.actionButton, { width: '50%' }]}
                 onPress={handleBarcodeScanner}
               >
-                <Ionicons name="barcode-outline" size={24} color="#5A31F4" />
+                <Ionicons name="barcode-outline" size={20} color="#5A31F4" />
                 <Text style={styles.actionButtonText}>Scan Barcode</Text>
               </TouchableOpacity>
               </View>
@@ -1027,7 +1029,7 @@ export default function HomeScreen() {
                   style={styles.actionButton}
                   onPress={handlePricePhoto}
                 >
-                  <Ionicons name="camera" size={24} color="#5A31F4" />
+                  <Ionicons name="camera" size={20} color="#5A31F4" />
                   <Text style={styles.actionButtonText}>Photo Price</Text>
                 </TouchableOpacity>
                 
@@ -1044,86 +1046,60 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Step 3: Store Information */}
+            {/* Step 3: Store Information - Compact */}
             <View style={styles.modalSection}>
               <Text style={styles.modalSectionTitle}>3. Store Information</Text>
               
-              {loadingStores && (
-                <ActivityIndicator size="small" color="#5A31F4" style={{ marginVertical: 10 }} />
-              )}
-              
-              {/* Nearby Stores */}
-              {nearbyStores.length > 0 && (
-                <View style={styles.popularStoresContainer}>
-                  <Text style={styles.popularStoresTitle}>
-                    <Ionicons name="location" size={14} color="#5A31F4" /> Nearby stores:
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {nearbyStores.slice(0, 5).map((store, index) => (
-                      <TouchableOpacity
-                        key={`nearby-${index}`}
-                        style={[styles.popularStoreChip, styles.nearbyStoreChip]}
-                        onPress={() => {
-                          setStoreName(store.name);
-                          setStoreLocation(store.address);
-                        }}
-                      >
-                        <Text style={styles.popularStoreText}>
-                          {store.name}
-                        </Text>
-                        <Text style={styles.nearbyStoreDistance}>
-                          {store.distance_meters < 1000 
-                            ? `${store.distance_meters}m away`
-                            : `${(store.distance_meters / 1000).toFixed(1)}km away`
-                          }
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-              
-              {/* Popular Stores */}
-              {popularStores.length > 0 && (
-                <View style={styles.popularStoresContainer}>
-                  <Text style={styles.popularStoresTitle}>
-                    <Ionicons name="star" size={14} color="#FFB800" /> Popular stores:
-                  </Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {popularStores.slice(0, 5).map((store, index) => (
-                      <TouchableOpacity
-                        key={`popular-${index}`}
-                        style={styles.popularStoreChip}
-                        onPress={() => {
-                          setStoreName(store.store_name);
-                          setStoreLocation(store.store_location);
-                        }}
-                      >
-                        <Text style={styles.popularStoreText}>
-                          {store.store_name} - {store.store_location}
-                        </Text>
-                        <Text style={styles.popularStoreCount}>
-                          ({store.submission_count} prices)
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-              
               <TextInput
                 style={styles.textInput}
-                placeholder="Store name (e.g. Tesco, ASDA...)"
+                placeholder={t('prices.store')}
                 value={storeName}
                 onChangeText={setStoreName}
               />
               
               <TextInput
                 style={styles.textInput}
-                placeholder="Location (e.g. London, Manchester...)"
+                placeholder={t('profile.country')}
                 value={storeLocation}
                 onChangeText={setStoreLocation}
               />
+              
+              {/* Compact Store Suggestions */}
+              {(popularStores.length > 0 || nearbyStores.length > 0) && (
+                <View style={styles.compactStoresContainer}>
+                  <Text style={styles.compactStoresTitle}>Quick select:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {nearbyStores.slice(0, 3).map((store, index) => (
+                      <TouchableOpacity
+                        key={`nearby-${index}`}
+                        style={[styles.compactStoreChip, styles.nearbyStoreChip]}
+                        onPress={() => {
+                          setStoreName(store.name);
+                          setStoreLocation(store.address);
+                        }}
+                      >
+                        <Text style={styles.compactStoreText}>
+                          {store.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                    {popularStores.slice(0, 3).map((store, index) => (
+                      <TouchableOpacity
+                        key={`popular-${index}`}
+                        style={styles.compactStoreChip}
+                        onPress={() => {
+                          setStoreName(store.store_name);
+                          setStoreLocation(store.store_location);
+                        }}
+                      >
+                        <Text style={styles.compactStoreText}>
+                          {store.store_name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
             </View>
 
             {/* Submit Button */}
@@ -1206,7 +1182,7 @@ export default function HomeScreen() {
             {/* Search Input */}
             <TextInput
               style={styles.searchModalInput}
-              placeholder="Search products by name, category, or barcode..."
+              placeholder={t('products.searchProducts')}
               value={productSearchText}
               onChangeText={setProductSearchText}
               autoFocus
@@ -1549,8 +1525,31 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '90%',
+    padding: 16,
+    maxHeight: '85%',
+    flexDirection: 'column',
+  },
+  compactStoresContainer: {
+    marginTop: 8,
+  },
+  compactStoresTitle: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 6,
+  },
+  compactStoreChip: {
+    backgroundColor: '#E8E0FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#5A31F4',
+  },
+  compactStoreText: {
+    color: '#5A31F4',
+    fontSize: 10,
+    fontWeight: '600',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1563,12 +1562,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   modalSection: {
-    marginBottom: 20,
+    marginBottom: 12,
   },
   modalSectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -1578,7 +1577,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     borderWidth: 2,
     borderStyle: 'dashed',
     borderColor: '#E0E0E0',
@@ -1591,9 +1590,9 @@ const styles = StyleSheet.create({
   },
   selectedProductCard: {
     backgroundColor: '#E8F5E9',
-    padding: 12,
+    padding: 8,
     borderRadius: 8,
-    marginTop: 12,
+    marginTop: 8,
   },
   selectedProductText: {
     color: '#2E7D32',
@@ -1606,33 +1605,34 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#E0E0E0',
     borderRadius: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   currencySymbol: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#666',
-    marginRight: 8,
+    marginRight: 6,
   },
   priceInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
-    padding: 16,
+    padding: 12,
   },
   textInput: {
     borderWidth: 1,
     borderColor: '#E0E0E0',
     borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 12,
+    padding: 10,
+    fontSize: 14,
+    marginBottom: 8,
   },
   submitButton: {
     backgroundColor: '#5A31F4',
-    padding: 16,
+    padding: 14,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 8,
   },
   submitButtonText: {
     color: 'white',
@@ -2138,31 +2138,31 @@ const styles = StyleSheet.create({
   },
   // Popular stores styles
   popularStoresContainer: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   popularStoresTitle: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#666',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   popularStoreChip: {
     backgroundColor: '#E8E0FF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 6,
     borderWidth: 1,
     borderColor: '#5A31F4',
   },
   popularStoreText: {
     color: '#5A31F4',
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
   },
   popularStoreCount: {
     color: '#8B7AB8',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 8,
+    marginTop: 1,
   },
   nearbyStoreChip: {
     backgroundColor: '#E8F5FF',
