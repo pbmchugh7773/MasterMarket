@@ -98,6 +98,7 @@ class CommunityPrice(Base):
     price = Column(Float, nullable=False)
     price_photo_url = Column(String, nullable=True)  # S3 URL for price tag photo
     currency = Column(String, default="GBP")
+    country = Column(String, default="UK")  # Country where price was submitted
     
     # Voting statistics
     upvotes = Column(Integer, default=0)

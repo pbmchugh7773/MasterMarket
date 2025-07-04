@@ -56,7 +56,8 @@ async def submit_price(
         store_location=price_data.store_location,
         price=price_data.price,
         price_photo_url=price_data.price_photo_url,
-        currency=price_data.currency
+        currency=price_data.currency,
+        country=current_user.country  # Use authenticated user's country
     )
     
     db.add(new_price)
@@ -140,12 +141,13 @@ async def get_product_prices(
     location: Optional[str] = Query(None, description="Filter by location"),
     days: Optional[int] = Query(7, description="Number of days to look back"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
-    """Get all community prices for a product with user's vote status"""
-    # Build query
+    """Get all community prices for a product with user's vote status, filtered by user's country"""
+    # Build query - filter by user's country first
     query = db.query(CommunityPrice).filter(
         CommunityPrice.product_id == product_id,
+        CommunityPrice.country == current_user.country,
         CommunityPrice.created_at >= datetime.utcnow() - timedelta(days=days)
     )
     
@@ -295,12 +297,14 @@ async def remove_vote(
 async def get_trending_prices(
     location: Optional[str] = Query(None, description="Filter by location"),
     limit: int = Query(10, description="Number of results to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Get trending price updates with product information"""
+    """Get trending price updates with product information, filtered by user's country"""
     query = db.query(CommunityPrice, Product).join(
         Product, CommunityPrice.product_id == Product.id
     ).filter(
+        CommunityPrice.country == current_user.country,
         CommunityPrice.created_at >= datetime.utcnow() - timedelta(days=7)  # Extended to 7 days for more results
     )
     
@@ -341,13 +345,14 @@ async def get_product_recent_prices(
     product_id: int,
     limit: int = Query(3, description="Number of recent prices to return"),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(lambda: None)  # Make auth optional
+    current_user: User = Depends(get_current_user)
 ):
-    """Get recent prices for a product with price change calculation"""
+    """Get recent prices for a product with price change calculation, filtered by user's country"""
     
-    # Get recent prices for the product
+    # Get recent prices for the product, filtered by user's country
     recent_prices = db.query(CommunityPrice).filter(
-        CommunityPrice.product_id == product_id
+        CommunityPrice.product_id == product_id,
+        CommunityPrice.country == current_user.country
     ).order_by(CommunityPrice.created_at.desc()).limit(limit * 3).all()  # Get more to calculate changes per store
     
     # Group by store and calculate price changes
@@ -522,18 +527,20 @@ async def get_nearby_stores(
 @router.get("/popular-stores", response_model=List[dict])
 async def get_popular_stores(
     limit: int = Query(10, description="Number of stores to return"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Get stores by popularity (most price submissions)"""
+    """Get stores by popularity (most price submissions) filtered by user's country"""
     
-    # Query to get store names with price submission counts
+    # Query to get store names with price submission counts, filtered by user's country
+    # Group only by store_name since store_location is now the country (same for all users in same country)
     popular_stores = db.query(
         CommunityPrice.store_name,
-        CommunityPrice.store_location,
         func.count(CommunityPrice.id).label('submission_count')
+    ).filter(
+        CommunityPrice.country == current_user.country
     ).group_by(
-        CommunityPrice.store_name,
-        CommunityPrice.store_location
+        CommunityPrice.store_name
     ).order_by(
         func.count(CommunityPrice.id).desc()
     ).limit(limit).all()
@@ -541,7 +548,7 @@ async def get_popular_stores(
     return [
         {
             "store_name": store.store_name,
-            "store_location": store.store_location,
+            "store_location": current_user.country,  # Use user's country as location
             "submission_count": store.submission_count
         }
         for store in popular_stores

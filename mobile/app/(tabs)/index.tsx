@@ -506,7 +506,7 @@ export default function HomeScreen() {
 
   // Submit price
   const submitPrice = async () => {
-    if (!selectedProduct || !newPrice || !storeName || !storeLocation) {
+    if (!selectedProduct || !newPrice || !storeName) {
       Alert.alert('Error', 'Please complete all fields');
       return;
     }
@@ -521,9 +521,9 @@ export default function HomeScreen() {
       await submitCommunityPrice({
         product_id: selectedProduct.id,
         store_name: storeName,
-        store_location: storeLocation,
+        store_location: user.country, // Use user's country automatically
         price: parseFloat(newPrice),
-        currency: 'GBP',
+        currency: countryData.currency,
       });
 
       Alert.alert('Success', 'Price submitted successfully!');
@@ -539,7 +539,7 @@ export default function HomeScreen() {
     setSelectedProduct(null);
     setNewPrice('');
     setStoreName('');
-    setStoreLocation('');
+    // storeLocation is automatically set to user's country, no need to reset
   };
 
   // View product prices
@@ -1057,12 +1057,11 @@ export default function HomeScreen() {
                 onChangeText={setStoreName}
               />
               
-              <TextInput
-                style={styles.textInput}
-                placeholder={t('profile.country')}
-                value={storeLocation}
-                onChangeText={setStoreLocation}
-              />
+              {/* Show user's country (automatic) */}
+              <View style={styles.countryDisplayContainer}>
+                <Text style={styles.countryDisplayLabel}>Country:</Text>
+                <Text style={styles.countryDisplayValue}>{countryData.flag} {user?.country}</Text>
+              </View>
               
               {/* Compact Store Suggestions */}
               {(popularStores.length > 0 || nearbyStores.length > 0) && (
@@ -1075,7 +1074,7 @@ export default function HomeScreen() {
                         style={[styles.compactStoreChip, styles.nearbyStoreChip]}
                         onPress={() => {
                           setStoreName(store.name);
-                          setStoreLocation(store.address);
+                          // storeLocation is automatically set to user's country
                         }}
                       >
                         <Text style={styles.compactStoreText}>
@@ -1089,7 +1088,7 @@ export default function HomeScreen() {
                         style={styles.compactStoreChip}
                         onPress={() => {
                           setStoreName(store.store_name);
-                          setStoreLocation(store.store_location);
+                          // storeLocation is automatically set to user's country
                         }}
                       >
                         <Text style={styles.compactStoreText}>
@@ -1106,10 +1105,10 @@ export default function HomeScreen() {
             <TouchableOpacity 
               style={[
                 styles.submitButton,
-                (!selectedProduct || !newPrice || !storeName || !storeLocation) && styles.disabledButton
+                (!selectedProduct || !newPrice || !storeName) && styles.disabledButton
               ]}
               onPress={submitPrice}
-              disabled={!selectedProduct || !newPrice || !storeName || !storeLocation || loading}
+              disabled={!selectedProduct || !newPrice || !storeName || loading}
             >
               {loading ? (
                 <ActivityIndicator color="white" />
@@ -1550,6 +1549,24 @@ const styles = StyleSheet.create({
     color: '#5A31F4',
     fontSize: 10,
     fontWeight: '600',
+  },
+  countryDisplayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F0F0',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  countryDisplayLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginRight: 8,
+  },
+  countryDisplayValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
   },
   modalHeader: {
     flexDirection: 'row',
